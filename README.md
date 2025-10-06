@@ -19,11 +19,31 @@ The application currently supports:
 
 ## Quick Start
 
+### Web Interface
+
 ```bash
 docker compose up --build -d
 
 # Server runs on http://localhost:8888
 ```
+
+### Evaluation CLI
+
+```bash
+# Build eval tool
+go build -o cataloger-eval ./cmd/eval
+
+# Fetch dataset from your catalog
+./cataloger-eval fetch --catalog vufind --url https://catalog.example.edu --limit 100
+
+# Run evaluation
+./cataloger-eval run --dataset ./eval_data --provider ollama
+
+# View results
+./cataloger-eval report --results ./eval_results
+```
+
+See [docs/EVALUATION.md](./docs/EVALUATION.md) for detailed evaluation documentation.
 
 ## Usage
 
@@ -82,16 +102,18 @@ For controlled vocabularies (subjects, classifications), we plan to use classifi
 - Basic session management
 - Simple web interface
 
-### Phase 2: MARC Generation ✅ (MVP Complete)
+### Phase 2: MARC Generation ✅ (Complete)
 - LLM vision model integration (Ollama, OpenAI)
 - MARC record generation from title pages
 - Multi-provider support
 - Provider/model selection in UI
 
-### Phase 3: Evaluation (Planned)
-- Evaluation CLI similar to ../htr
-- nDCG scoring against professional catalogs
-- Precision/recall metrics for metadata fields
+### Phase 3: Evaluation ✅ (Complete)
+- Evaluation CLI for systematic quality assessment
+- VuFind/FOLIO catalog integration
+- Field-weighted MARC comparison with Levenshtein distance
+- Text, JSON, and CSV report generation
+- Concurrent evaluation processing
 
 ### Phase 4: Advanced Features (Planned)
 - Multi-language support

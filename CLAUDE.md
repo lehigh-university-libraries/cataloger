@@ -13,6 +13,7 @@ Cataloger is a web-based book metadata cataloging tool that generates MARC recor
 - **Project Architecture**: `./docs/ARCHITECTURE.md`
 - **Security Policy**: `./SECURITY.md`
 - **Contributing Guide**: `./CONTRIBUTING.md`
+- **Evaluation Guide**: `./docs/EVALUATION.md`
 
 ## Current Features (Implemented)
 
@@ -46,15 +47,33 @@ Cataloger is a web-based book metadata cataloging tool that generates MARC recor
 - Real-time session list
 - Modal display of images and MARC records
 
+### ✅ Evaluation CLI
+- Query VuFind/FOLIO catalogs to build evaluation datasets
+- Compare LLM-generated MARC against professional catalog records
+- Field-by-field comparison with weighted scoring
+- Levenshtein distance for similarity measurement
+- Text, JSON, and CSV report formats
+- Concurrent evaluation processing
+
 ## Architecture
 
 ### Backend (Go)
 - **main.go**: HTTP server on port 8888
+- **cmd/eval/**: Evaluation CLI tool
+  - `main.go`: CLI command routing
+  - `fetch.go`: Dataset generation from catalog
+  - `run.go`: Batch evaluation with metrics
+  - `report.go`: Report generation (text/JSON/CSV)
 - **internal/cataloging/service.go**: MARC generation with multi-provider support
   - `GenerateMARCFromImage()`: Main entry point
   - `generateWithOllama()`: Ollama API integration
   - `generateWithOpenAI()`: OpenAI Vision API integration
   - `buildMARCPrompt()`: Expert cataloger prompt
+- **internal/catalog/**: VuFind/FOLIO API clients
+  - `client.go`: Catalog querying and MARC/image fetching
+- **internal/evaluation/**: MARC comparison engine
+  - `comparison.go`: Field-by-field comparison with Levenshtein distance
+  - `dataset.go`: Dataset and results persistence
 - **internal/handlers/**: HTTP endpoints
   - `upload.go`: File and URL upload with validation
   - `sessions.go`: Session CRUD operations
