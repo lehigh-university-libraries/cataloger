@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cataloger - Book Metadata Upload</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 Cataloger</h1>
+            <p>Upload book images for metadata cataloging</p>
+        </div>
+
+        <!-- Upload Section -->
+        <div id="upload-section">
+            <div class="upload-area" id="upload-area">
+                <h3>Upload Book Images</h3>
+                <p>Upload cover, title page, or copyright page images</p>
+
+                <!-- Provider and Model Selection -->
+                <div class="provider-selection">
+                    <h4>Provider Configuration</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px;">
+                        <div>
+                            <label for="provider-select">Provider:</label>
+                            <select id="provider-select" onchange="updateModelOptions()">
+                                <option value="ollama">Ollama (Local)</option>
+                                <option value="openai">OpenAI GPT</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="model-select">Model:</label>
+                            <select id="model-select">
+                                <option value="mistral-small3.2:24b">mistral-small3.2:24b</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- File Upload -->
+                <div class="upload-method">
+                    <h4>Upload from Computer</h4>
+                    <label for="image-type-select">Image Type:</label>
+                    <select id="image-type-select">
+                        <option value="cover">Cover</option>
+                        <option value="title_page">Title Page</option>
+                        <option value="copyright">Copyright Page</option>
+                    </select>
+                    <br>
+                    <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.gif" style="margin: 10px 0;">
+                    <br>
+                    <button class="btn btn-primary" onclick="handleUpload()">Upload Image</button>
+                </div>
+
+                <!-- URL Input -->
+                <div class="upload-method" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #333;">
+                    <h4>Process from Image URL</h4>
+                    <label for="image-type-url-select">Image Type:</label>
+                    <select id="image-type-url-select">
+                        <option value="cover">Cover</option>
+                        <option value="title_page">Title Page</option>
+                        <option value="copyright">Copyright Page</option>
+                    </select>
+                    <br>
+                    <input type="url" id="url-input" placeholder="https://example.com/image.jpg" style="width: 100%; margin: 10px 0; padding: 8px; border: 1px solid #333; background: #111; color: #fff; border-radius: 4px;">
+                    <br>
+                    <button class="btn btn-primary" onclick="handleUrlUpload()">Process URL</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sessions List -->
+        <div class="session-list">
+            <h3>Recent Sessions</h3>
+            <div id="sessions-list">Loading...</div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

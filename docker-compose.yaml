@@ -1,0 +1,15 @@
+---
+networks:
+  default:
+
+services:
+  cataloger:
+    image: ghcr.io/lehigh-university-libraries/cataloger:main
+    build: .
+    environment:
+      OLLAMA_URL: $OLLAMA_URL
+      OPENAI_API_KEY: $OPENAI_API_KEY
+    ports:
+      - 8888:8888
+    healthcheck:
+      start_period: 1s
