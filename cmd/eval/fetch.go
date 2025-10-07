@@ -86,9 +86,7 @@ func executeFetch(oaiURL, metadataPrefix, outputDir string, limit int, excludeTa
 			savedCount++
 			slog.Info("Processing record", "id", record.Header.Identifier, "saved", savedCount)
 
-			// Save the record immediately
-			// Note: MARC does not store image URLs. Images are retrieved separately
-			// based on ISBN (020) or OCLC number (035) against external data sources.
+			// Save the record
 			item := evaluation.DatasetItem{
 				ID:            record.Header.Identifier,
 				ReferenceMARC: string(metadataBytes),
@@ -121,8 +119,9 @@ func executeFetch(oaiURL, metadataPrefix, outputDir string, limit int, excludeTa
 	fmt.Printf("  Records filtered (excluded tags): %d\n", filteredCount)
 	fmt.Printf("  Total processed: %d\n", recordCount)
 	fmt.Printf("  Location: %s\n", outputDir)
-	fmt.Printf("\nNext step: Run evaluation with:\n")
-	fmt.Printf("  eval run --dataset %s\n", outputDir)
+	fmt.Printf("\nNext steps:\n")
+	fmt.Printf("  1. Enrich dataset with images: eval enrich --dataset %s\n", outputDir)
+	fmt.Printf("  2. Run evaluation: eval run --dataset %s\n", outputDir)
 
 	return nil
 }
@@ -297,4 +296,23 @@ func shouldExcludeRecord(record *marc.Record, excludeTags []string) bool {
 	}
 
 	return false
+}
+
+// extractISBNFromMARC extracts the first ISBN (020$a) from a MARC record
+func extractISBNFromMARC(record *marc.Record) string {
+	for _, field := range record.Fields {
+		if field.Tag == "020" {
+			for _, subfield := range field.SubFields {
+				if subfield.Code == "a" && len(subfield.Value) > 0 {
+					// Return the first ISBN found
+					// ISBN may have additional text after space, take just the number part
+					parts := strings.Fields(subfield.Value)
+					if len(parts) > 0 {
+						return parts[0]
+					}
+				}
+			}
+		}
+	}
+	return ""
 }

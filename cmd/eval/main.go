@@ -30,6 +30,8 @@ func main() {
 	switch command {
 	case "fetch":
 		fetchCmd()
+	case "enrich":
+		enrichCmd()
 	case "run":
 		runCmd()
 	case "report":
@@ -81,6 +83,7 @@ func printUsage() {
 
 Usage:
   eval fetch [options]    Fetch records from OAI-PMH endpoint to build evaluation dataset
+  eval enrich [options]   Enrich dataset with images and MARCXML for each ISBN
   eval run [options]      Run evaluation on dataset
   eval report [options]   Generate detailed comparison report
   eval version            Print version
@@ -90,8 +93,8 @@ Examples:
   # Fetch 100 books with ISBN from FOLIO OAI-PMH endpoint
   eval fetch --url https://folio.example.edu/oai --limit 100
 
-  # Fetch with custom metadata prefix and exclude certain tags
-  eval fetch --url https://folio.example.edu/oai --prefix marc21 --limit 100 --exclude 655 --exclude 880
+  # Enrich dataset with images (creates ISBN directories with marc.xml + images)
+  eval enrich --dataset ./eval_data --output ./enriched_data
 
   # Run evaluation with Ollama
   eval run --dataset ./eval_data --provider ollama --model mistral-small3.2:24b
@@ -135,6 +138,22 @@ func fetchCmd() {
 	}
 
 	if err := executeFetch(*url, *prefix, *output, *limit, excludeTags, *sleep); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func enrichCmd() {
+	fs := flag.NewFlagSet("enrich", flag.ExitOnError)
+	dataset := fs.String("dataset", "./eval_data", "Dataset directory containing dataset.json")
+	output := fs.String("output", "./enriched_data", "Output directory for enriched data")
+
+	if err := fs.Parse(os.Args[2:]); err != nil {
+		fmt.Printf("Error parsing flags: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := executeEnrich(*dataset, *output); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
