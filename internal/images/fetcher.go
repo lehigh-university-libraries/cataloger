@@ -158,7 +158,7 @@ func (f *Fetcher) getInternetArchiveID(isbn string) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Open Library API returned status %d", resp.StatusCode)
+		return "", fmt.Errorf("open Library API returned status %d", resp.StatusCode)
 	}
 
 	var result OpenLibraryBooksResponse
@@ -283,7 +283,7 @@ func (f *Fetcher) downloadGoogleBooksPages(isbn string, imageSet *ImageSet, outp
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Google Books API returned status %d", resp.StatusCode)
+		return fmt.Errorf("google Books API returned status %d", resp.StatusCode)
 	}
 
 	var result struct {
