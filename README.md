@@ -33,8 +33,8 @@ docker compose up --build -d
 # Build eval tool
 go build -o cataloger-eval ./cmd/eval
 
-# Fetch dataset from your catalog
-./cataloger-eval fetch --catalog vufind --url https://catalog.example.edu --limit 100
+# Fetch dataset from OAI-PMH endpoint (saves incrementally)
+./cataloger-eval fetch --url https://folio.example.edu/oai --limit 100 --sleep 2
 
 # Run evaluation
 ./cataloger-eval run --dataset ./eval_data --provider ollama

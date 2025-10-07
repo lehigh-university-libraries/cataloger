@@ -48,7 +48,10 @@ Cataloger is a web-based book metadata cataloging tool that generates MARC recor
 - Modal display of images and MARC records
 
 ### ✅ Evaluation CLI
-- Query VuFind/FOLIO catalogs to build evaluation datasets
+- Harvest records from OAI-PMH endpoints (FOLIO, VuFind, Koha, etc.)
+- Incremental dataset saving (records saved immediately during harvest)
+- Resumption token support with configurable sleep delays
+- Automatic filtering (books with ISBN only, excludes deleted/suppressed)
 - Compare LLM-generated MARC against professional catalog records
 - Field-by-field comparison with weighted scoring
 - Levenshtein distance for similarity measurement
@@ -60,8 +63,8 @@ Cataloger is a web-based book metadata cataloging tool that generates MARC recor
 ### Backend (Go)
 - **main.go**: HTTP server on port 8888
 - **cmd/eval/**: Evaluation CLI tool
-  - `main.go`: CLI command routing
-  - `fetch.go`: Dataset generation from catalog
+  - `main.go`: CLI command routing with `--sleep` parameter support
+  - `fetch.go`: OAI-PMH harvesting with incremental saving and resumption token sleep
   - `run.go`: Batch evaluation with metrics
   - `report.go`: Report generation (text/JSON/CSV)
 - **internal/cataloging/service.go**: MARC generation with multi-provider support
@@ -69,11 +72,9 @@ Cataloger is a web-based book metadata cataloging tool that generates MARC recor
   - `generateWithOllama()`: Ollama API integration
   - `generateWithOpenAI()`: OpenAI Vision API integration
   - `buildMARCPrompt()`: Expert cataloger prompt
-- **internal/catalog/**: VuFind/FOLIO API clients
-  - `client.go`: Catalog querying and MARC/image fetching
 - **internal/evaluation/**: MARC comparison engine
   - `comparison.go`: Field-by-field comparison with Levenshtein distance
-  - `dataset.go`: Dataset and results persistence
+  - `dataset.go`: Dataset and results persistence with incremental save support (AppendDatasetItem)
 - **internal/handlers/**: HTTP endpoints
   - `upload.go`: File and URL upload with validation
   - `sessions.go`: Session CRUD operations
@@ -195,13 +196,19 @@ The system uses a detailed prompt that positions the LLM as an expert Library of
 - Template matching for edge cases
 - Subject classification using embeddings
 
-### Phase 3: Evaluation (Planned)
-- nDCG scoring CLI (similar to ../htr)
-- Compare against professional catalogs
-- Precision/recall metrics
-- Test dataset management
+### Phase 3: Evaluation ✅ (Complete)
+- OAI-PMH harvesting from any compatible catalog
+- Incremental dataset building with real-time progress
+- Field-weighted MARC comparison
+- Comprehensive evaluation reports
 
-### Phase 4: Production Ready (Planned)
+### Phase 4: Enhanced Evaluation (Planned)
+- Resume capability for interrupted harvests
+- Parallel OAI-PMH harvesting
+- Image fetching from external sources (OpenLibrary, Google Books)
+- nDCG scoring for ranked field importance
+
+### Phase 5: Production Ready (Planned)
 - Authentication and authorization
 - Rate limiting
 - Database persistence
@@ -223,9 +230,17 @@ See `CONTRIBUTING.md` for:
 ```
 cataloger/
 ├── main.go                      # Entry point
+├── cmd/eval/                    # Evaluation CLI
+│   ├── main.go                 # CLI routing with --sleep parameter
+│   ├── fetch.go                # OAI-PMH harvest with incremental save
+│   ├── run.go                  # Batch evaluation
+│   └── report.go               # Report generation
 ├── internal/
 │   ├── cataloging/
 │   │   └── service.go          # MARC generation with LLMs
+│   ├── evaluation/
+│   │   ├── comparison.go       # Field comparison with Levenshtein
+│   │   └── dataset.go          # Dataset persistence (incremental)
 │   ├── handlers/
 │   │   ├── common.go           # Shared handler utilities
 │   │   ├── upload.go           # File/URL upload
@@ -245,6 +260,7 @@ cataloger/
 │   └── styles.css              # Dark theme
 ├── docs/
 │   ├── ARCHITECTURE.md         # Detailed architecture
+│   ├── EVALUATION.md           # Evaluation guide
 │   └── GO_CONVENTIONS.md       # Go style guide
 ├── SECURITY.md                 # Security considerations
 ├── CONTRIBUTING.md             # Contribution guide

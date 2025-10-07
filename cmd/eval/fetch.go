@@ -1,96 +1,125 @@
 package main
 
 import (
+	"encoding/xml"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"os"
-	"path/filepath"
+	"strings"
+	"time"
 
-	"github.com/lehigh-university-libraries/cataloger/internal/catalog"
+	"github.com/Jpmcrespo/goharvest/oai"
+	"github.com/hectorcorrea/marcli/pkg/marc"
 	"github.com/lehigh-university-libraries/cataloger/internal/evaluation"
 )
 
-func executeFetch(catalogType, catalogURL, apiKey, outputDir string, limit int) error {
-	slog.Info("Starting dataset fetch", "catalog", catalogType, "url", catalogURL, "limit", limit)
-
-	// Create catalog client
-	client := catalog.NewClient(catalogType, catalogURL, apiKey)
-
-	// Fetch records from catalog
-	slog.Info("Fetching records from catalog...")
-	records, err := client.FetchRecords(limit)
-	if err != nil {
-		return fmt.Errorf("failed to fetch records: %w", err)
-	}
-
-	slog.Info("Fetched records", "count", len(records))
+func executeFetch(oaiURL, metadataPrefix, outputDir string, limit int, excludeTags []string, sleepSeconds int) error {
+	slog.Info("Starting OAI-PMH harvest", "url", oaiURL, "prefix", metadataPrefix, "limit", limit, "sleep", sleepSeconds)
 
 	// Create output directory
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	// Create images directory
-	imagesDir := filepath.Join(outputDir, "images")
-	if err := os.MkdirAll(imagesDir, 0755); err != nil {
-		return fmt.Errorf("failed to create images directory: %w", err)
+	recordCount := 0
+	savedCount := 0
+	skippedCount := 0
+	filteredCount := 0
+	batchCount := 0
+
+	// Harvest records using resumption tokens with batch callback for sleep control
+	slog.Info("Harvesting records from OAI-PMH endpoint...")
+	request := &oai.Request{
+		BaseURL:        oaiURL,
+		MetadataPrefix: metadataPrefix,
 	}
 
-	// Build dataset
-	dataset := &evaluation.Dataset{
-		Items: make([]evaluation.DatasetItem, 0, len(records)),
-	}
+	request.Harvest(func(response *oai.Response) {
+		// Process each record in the batch
+		for _, record := range response.ListRecords.Records {
+			// Stop if we've reached the limit
+			if savedCount >= limit {
+				return
+			}
 
-	for i, record := range records {
-		slog.Info("Processing record", "id", record.ID, "progress", fmt.Sprintf("%d/%d", i+1, len(records)))
+			recordCount++
 
-		item := evaluation.DatasetItem{
-			ID:            record.ID,
-			ReferenceMARC: record.MARCRecord,
-		}
+			// Get metadata bytes
+			metadataBytes := []byte(record.Metadata.Body)
 
-		// Download images if URLs are available
-		if record.CoverImageURL != "" {
-			imagePath := filepath.Join(imagesDir, fmt.Sprintf("%s_cover.jpg", record.ID))
-			if err := downloadImage(record.CoverImageURL, imagePath); err != nil {
-				slog.Warn("Failed to download cover image", "id", record.ID, "error", err)
-			} else {
-				item.CoverImagePath = imagePath
+			// Parse MARC record
+			marcRecord, err := parseMARCRecord(metadataBytes)
+			if err != nil {
+				slog.Warn("Failed to parse MARC record", "id", record.Header.Identifier, "error", err)
+				skippedCount++
+				continue
+			}
+
+			// Skip deleted records (leader position 5 = 'd')
+			if isDeletedRecord(marcRecord) {
+				slog.Debug("Skipping deleted record", "id", record.Header.Identifier)
+				filteredCount++
+				continue
+			}
+
+			// Skip suppressed records (999$i = 1)
+			if isSuppressedRecord(marcRecord) {
+				slog.Debug("Skipping suppressed record (999$i = 1)", "id", record.Header.Identifier)
+				filteredCount++
+				continue
+			}
+
+			// Filter by exclude tags
+			if shouldExcludeRecord(marcRecord, excludeTags) {
+				slog.Debug("Filtered out record by exclude tags", "id", record.Header.Identifier)
+				filteredCount++
+				continue
+			}
+
+			// Only save records that are books with ISBN
+			if !isBookWithISBN(marcRecord) {
+				slog.Debug("Skipping record (not a book with ISBN)", "id", record.Header.Identifier)
+				skippedCount++
+				continue
+			}
+
+			savedCount++
+			slog.Info("Processing record", "id", record.Header.Identifier, "saved", savedCount)
+
+			// Save the record immediately
+			// Note: MARC does not store image URLs. Images are retrieved separately
+			// based on ISBN (020) or OCLC number (035) against external data sources.
+			item := evaluation.DatasetItem{
+				ID:            record.Header.Identifier,
+				ReferenceMARC: string(metadataBytes),
+			}
+
+			if err := evaluation.AppendDatasetItem(item, outputDir); err != nil {
+				slog.Error("Failed to save dataset item", "id", record.Header.Identifier, "error", err)
+				continue
 			}
 		}
 
-		if record.TitlePageURL != "" {
-			imagePath := filepath.Join(imagesDir, fmt.Sprintf("%s_titlepage.jpg", record.ID))
-			if err := downloadImage(record.TitlePageURL, imagePath); err != nil {
-				slog.Warn("Failed to download title page image", "id", record.ID, "error", err)
-			} else {
-				item.TitlePagePath = imagePath
-			}
+		// Sleep between batches if requested and there's a resumption token
+		if sleepSeconds > 0 && response.ListRecords.ResumptionToken != "" {
+			batchCount++
+			slog.Info("Sleeping between resumption token requests", "batch", batchCount, "seconds", sleepSeconds)
+			time.Sleep(time.Duration(sleepSeconds) * time.Second)
 		}
+	})
 
-		if record.CopyrightURL != "" {
-			imagePath := filepath.Join(imagesDir, fmt.Sprintf("%s_copyright.jpg", record.ID))
-			if err := downloadImage(record.CopyrightURL, imagePath); err != nil {
-				slog.Warn("Failed to download copyright image", "id", record.ID, "error", err)
-			} else {
-				item.CopyrightPagePath = imagePath
-			}
-		}
+	slog.Info("Dataset created successfully",
+		"saved", savedCount,
+		"skipped", skippedCount,
+		"filtered", filteredCount,
+		"total_processed", recordCount,
+		"batches", batchCount)
 
-		dataset.Items = append(dataset.Items, item)
-	}
-
-	// Save dataset
-	slog.Info("Saving dataset", "output", outputDir)
-	if err := evaluation.SaveDataset(dataset, outputDir); err != nil {
-		return fmt.Errorf("failed to save dataset: %w", err)
-	}
-
-	slog.Info("Dataset created successfully", "items", len(dataset.Items))
 	fmt.Printf("\nDataset created successfully!\n")
-	fmt.Printf("  Records: %d\n", len(dataset.Items))
+	fmt.Printf("  Records saved: %d\n", savedCount)
+	fmt.Printf("  Records skipped (not books with ISBN): %d\n", skippedCount)
+	fmt.Printf("  Records filtered (excluded tags): %d\n", filteredCount)
+	fmt.Printf("  Total processed: %d\n", recordCount)
 	fmt.Printf("  Location: %s\n", outputDir)
 	fmt.Printf("\nNext step: Run evaluation with:\n")
 	fmt.Printf("  eval run --dataset %s\n", outputDir)
@@ -98,26 +127,174 @@ func executeFetch(catalogType, catalogURL, apiKey, outputDir string, limit int) 
 	return nil
 }
 
-func downloadImage(url, outputPath string) error {
-	resp, err := http.Get(url)
+// parseMARCRecord parses a MARC record from MARCXML or ISO2709 bytes
+func parseMARCRecord(data []byte) (*marc.Record, error) {
+	// Check if it's MARCXML
+	dataStr := string(data)
+	if strings.Contains(dataStr, "<marc:record") || strings.Contains(dataStr, "<record") {
+		return parseMARCXML(data)
+	}
+
+	// Otherwise try ISO2709 binary format
+	return parseMARCBinary(data)
+}
+
+// parseMARCXML parses MARCXML into a marc.Record
+func parseMARCXML(data []byte) (*marc.Record, error) {
+	var xmlRec marc.XmlRecord
+
+	// Wrap in XML document if needed
+	xmlStr := string(data)
+	if !strings.HasPrefix(strings.TrimSpace(xmlStr), "<?xml") {
+		xmlStr = `<?xml version="1.0" encoding="UTF-8"?>` + "\n" + xmlStr
+	}
+
+	// Handle MARC namespace
+	xmlStr = strings.ReplaceAll(xmlStr, "<marc:record", "<record")
+	xmlStr = strings.ReplaceAll(xmlStr, "</marc:record>", "</record>")
+	xmlStr = strings.ReplaceAll(xmlStr, "<marc:leader>", "<leader>")
+	xmlStr = strings.ReplaceAll(xmlStr, "</marc:leader>", "</leader>")
+	xmlStr = strings.ReplaceAll(xmlStr, "<marc:controlfield", "<controlfield")
+	xmlStr = strings.ReplaceAll(xmlStr, "</marc:controlfield>", "</controlfield>")
+	xmlStr = strings.ReplaceAll(xmlStr, "<marc:datafield", "<datafield")
+	xmlStr = strings.ReplaceAll(xmlStr, "</marc:datafield>", "</datafield>")
+	xmlStr = strings.ReplaceAll(xmlStr, "<marc:subfield", "<subfield")
+	xmlStr = strings.ReplaceAll(xmlStr, "</marc:subfield>", "</subfield>")
+
+	if err := xml.Unmarshal([]byte(xmlStr), &xmlRec); err != nil {
+		return nil, fmt.Errorf("failed to parse MARCXML: %w", err)
+	}
+
+	// Convert XmlRecord to Record
+	rec := &marc.Record{}
+
+	// Parse leader
+	leader, err := marc.NewLeader([]byte(xmlRec.Leader))
 	if err != nil {
-		return fmt.Errorf("failed to fetch image: %w", err)
+		// Non-fatal: some XML records have invalid leaders
+		slog.Debug("Invalid leader in XML record", "error", err)
 	}
-	defer resp.Body.Close()
+	rec.Leader = leader
+	rec.Data = []byte(xmlStr) // Store original XML as data
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("image fetch returned status %d", resp.StatusCode)
+	// Convert control fields
+	for _, control := range xmlRec.ControlFields {
+		field := marc.Field{Tag: control.Tag, Value: control.Value}
+		rec.Fields = append(rec.Fields, field)
 	}
 
-	file, err := os.Create(outputPath)
+	// Convert data fields
+	for _, data := range xmlRec.DataFields {
+		field := marc.Field{
+			Tag:        data.Tag,
+			Indicator1: data.Ind1,
+			Indicator2: data.Ind2,
+		}
+		for _, sub := range data.SubFields {
+			subfield := marc.SubField{Code: sub.Code, Value: sub.Value}
+			field.SubFields = append(field.SubFields, subfield)
+		}
+		rec.Fields = append(rec.Fields, field)
+	}
+
+	return rec, nil
+}
+
+// parseMARCBinary parses ISO2709 binary MARC
+func parseMARCBinary(data []byte) (*marc.Record, error) {
+	tmpFile, err := os.CreateTemp("", "marc-*.mrc")
 	if err != nil {
-		return fmt.Errorf("failed to create image file: %w", err)
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer file.Close()
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
 
-	if _, err := io.Copy(file, resp.Body); err != nil {
-		return fmt.Errorf("failed to save image: %w", err)
+	if _, err := tmpFile.Write(data); err != nil {
+		return nil, fmt.Errorf("failed to write temp file: %w", err)
 	}
 
-	return nil
+	if _, err := tmpFile.Seek(0, 0); err != nil {
+		return nil, fmt.Errorf("failed to seek: %w", err)
+	}
+
+	marcFile := marc.NewMarcFile(tmpFile)
+
+	if !marcFile.Scan() {
+		if err := marcFile.Err(); err != nil {
+			return nil, fmt.Errorf("scan error: %w", err)
+		}
+		return nil, fmt.Errorf("no MARC record found")
+	}
+
+	record, err := marcFile.Record()
+	if err != nil {
+		return nil, fmt.Errorf("record parse error: %w", err)
+	}
+
+	return &record, nil
+}
+
+// isDeletedRecord checks if a MARC record is marked as deleted (leader position 5 = 'd')
+func isDeletedRecord(record *marc.Record) bool {
+	return record.Leader.Status == 'd'
+}
+
+// isSuppressedRecord checks if a MARC record is suppressed from discovery (999$i = 1)
+func isSuppressedRecord(record *marc.Record) bool {
+	for _, field := range record.Fields {
+		if field.Tag == "999" {
+			for _, subfield := range field.SubFields {
+				if subfield.Code == "i" && subfield.Value == "1" {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// isBookWithISBN checks if a MARC record is a book and has an ISBN
+func isBookWithISBN(record *marc.Record) bool {
+	// Check Leader Type (position 6)
+	// 'a' = Language material (books)
+	// 't' = Manuscript language material
+	if record.Leader.Type != 'a' && record.Leader.Type != 't' {
+		return false
+	}
+
+	// Check Leader BibLevel (position 7)
+	// 'm' = Monograph/Item
+	if record.Leader.BibLevel != 'm' {
+		return false
+	}
+
+	// Check for ISBN in field 020
+	for _, field := range record.Fields {
+		if field.Tag == "020" {
+			for _, subfield := range field.SubFields {
+				if subfield.Code == "a" && len(subfield.Value) > 0 {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// shouldExcludeRecord checks if a record contains any of the excluded tags
+func shouldExcludeRecord(record *marc.Record, excludeTags []string) bool {
+	if len(excludeTags) == 0 {
+		return false
+	}
+
+	for _, field := range record.Fields {
+		for _, excludeTag := range excludeTags {
+			if field.Tag == excludeTag {
+				return true
+			}
+		}
+	}
+
+	return false
 }

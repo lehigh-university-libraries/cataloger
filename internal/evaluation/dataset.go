@@ -43,6 +43,46 @@ func SaveDataset(dataset *Dataset, outputDir string) error {
 	return nil
 }
 
+// AppendDatasetItem appends a single item to an existing dataset file
+// Creates the dataset file if it doesn't exist
+func AppendDatasetItem(item DatasetItem, outputDir string) error {
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	datasetPath := filepath.Join(outputDir, "dataset.json")
+
+	// Load existing dataset or create new one
+	var dataset Dataset
+	if _, err := os.Stat(datasetPath); err == nil {
+		existingDataset, err := LoadDataset(outputDir)
+		if err != nil {
+			return fmt.Errorf("failed to load existing dataset: %w", err)
+		}
+		dataset = *existingDataset
+	} else {
+		dataset = Dataset{Items: make([]DatasetItem, 0)}
+	}
+
+	// Append new item
+	dataset.Items = append(dataset.Items, item)
+
+	// Save updated dataset
+	file, err := os.Create(datasetPath)
+	if err != nil {
+		return fmt.Errorf("failed to create dataset file: %w", err)
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(&dataset); err != nil {
+		return fmt.Errorf("failed to encode dataset: %w", err)
+	}
+
+	return nil
+}
+
 // LoadDataset loads a dataset from disk
 func LoadDataset(datasetDir string) (*Dataset, error) {
 	datasetPath := filepath.Join(datasetDir, "dataset.json")

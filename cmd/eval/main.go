@@ -3,7 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
+	"strings"
+
+	"github.com/joho/godotenv"
 )
 
 const (
@@ -15,6 +19,11 @@ func main() {
 		printUsage()
 		os.Exit(1)
 	}
+	err := godotenv.Load()
+	if err != nil {
+		slog.Warn("Error loading .env file", "err", err)
+	}
+	setupLogger()
 
 	command := os.Args[1]
 
@@ -36,19 +45,53 @@ func main() {
 	}
 }
 
+func setupLogger() {
+	logLevel := strings.ToUpper(os.Getenv("LOG_LEVEL"))
+	if logLevel == "" {
+		logLevel = "INFO"
+	}
+
+	var level slog.Level
+	switch logLevel {
+	case "DEBUG":
+		level = slog.LevelDebug
+	case "INFO":
+		level = slog.LevelInfo
+	case "WARN", "WARNING":
+		level = slog.LevelWarn
+	case "ERROR":
+		level = slog.LevelError
+	default:
+		slog.Info("Unknown log level", "logLevel", logLevel)
+		level = slog.LevelInfo
+	}
+
+	opts := &slog.HandlerOptions{
+		Level: level,
+	}
+
+	handler := slog.NewTextHandler(os.Stderr, opts)
+	logger := slog.New(handler)
+
+	slog.SetDefault(logger)
+}
+
 func printUsage() {
 	fmt.Print(`cataloger-eval - MARC cataloging evaluation tool
 
 Usage:
-  eval fetch [options]    Fetch records from catalog to build evaluation dataset
+  eval fetch [options]    Fetch records from OAI-PMH endpoint to build evaluation dataset
   eval run [options]      Run evaluation on dataset
   eval report [options]   Generate detailed comparison report
   eval version            Print version
   eval help               Show this help
 
 Examples:
-  # Fetch 100 records from VuFind catalog
-  eval fetch --catalog vufind --url https://catalog.example.edu --limit 100
+  # Fetch 100 books with ISBN from FOLIO OAI-PMH endpoint
+  eval fetch --url https://folio.example.edu/oai --limit 100
+
+  # Fetch with custom metadata prefix and exclude certain tags
+  eval fetch --url https://folio.example.edu/oai --prefix marc21 --limit 100 --exclude 655 --exclude 880
 
   # Run evaluation with Ollama
   eval run --dataset ./eval_data --provider ollama --model mistral-small3.2:24b
@@ -58,13 +101,27 @@ Examples:
 `)
 }
 
+type stringSlice []string
+
+func (s *stringSlice) String() string {
+	return fmt.Sprint(*s)
+}
+
+func (s *stringSlice) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
+
 func fetchCmd() {
 	fs := flag.NewFlagSet("fetch", flag.ExitOnError)
-	catalog := fs.String("catalog", "vufind", "Catalog type (vufind or folio)")
-	url := fs.String("url", "", "Catalog URL (required)")
-	limit := fs.Int("limit", 100, "Number of records to fetch")
+	url := fs.String("url", os.Getenv("OAI_PMH_URL"), "OAI-PMH base URL (required)")
+	prefix := fs.String("prefix", "marc21", "OAI-PMH metadataPrefix")
+	limit := fs.Int("limit", 100, "Maximum number of records to fetch")
 	output := fs.String("output", "./eval_data", "Output directory for dataset")
-	apiKey := fs.String("api-key", "", "API key for FOLIO (optional)")
+	sleep := fs.Int("sleep", 0, "Seconds to sleep between resumption token requests (0 = no sleep)")
+
+	var excludeTags stringSlice
+	fs.Var(&excludeTags, "exclude", "MARC tag to exclude (can be specified multiple times)")
 
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		fmt.Printf("Error parsing flags: %v\n", err)
@@ -77,7 +134,7 @@ func fetchCmd() {
 		os.Exit(1)
 	}
 
-	if err := executeFetch(*catalog, *url, *apiKey, *output, *limit); err != nil {
+	if err := executeFetch(*url, *prefix, *output, *limit, excludeTags, *sleep); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}

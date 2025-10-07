@@ -6,9 +6,15 @@ The `cataloger-eval` CLI tool enables systematic evaluation of MARC record gener
 
 The evaluation workflow consists of three steps:
 
-1. **Fetch**: Query your library catalog (VuFind/FOLIO) to build an evaluation dataset
+1. **Fetch**: Harvest MARC records from OAI-PMH endpoints to build an evaluation dataset
 2. **Run**: Generate MARC records from images and compare them to reference records
 3. **Report**: Analyze results and generate detailed comparison reports
+
+**Key Features**:
+- Incremental saving during harvest (records saved immediately, not at end)
+- Resumption token support with configurable sleep delays
+- Filters for books with ISBN only
+- Automatic exclusion of deleted and suppressed records
 
 ## Installation
 
@@ -22,25 +28,47 @@ go build -o cataloger-eval ./cmd/eval
 
 ### `eval fetch` - Build Evaluation Dataset
 
-Fetches MARC records and associated images from your library catalog.
+Harvests MARC records from OAI-PMH endpoints. Records are saved incrementally as they're fetched, so you can monitor progress in real-time.
 
 ```bash
-eval fetch --catalog vufind \
-           --url https://catalog.yourlibrary.edu \
+eval fetch --url https://folio.example.edu/oai \
+           --prefix marc21 \
            --limit 100 \
+           --sleep 2 \
            --output ./eval_data
 ```
 
 **Options**:
-- `--catalog`: Catalog type (`vufind` or `folio`)
-- `--url`: Catalog URL (required)
-- `--limit`: Number of records to fetch (default: 100)
+- `--url`: OAI-PMH base URL (required, can also use `OAI_PMH_URL` env var)
+- `--prefix`: OAI-PMH metadata prefix (default: `marc21`)
+- `--limit`: Number of records to save (default: 100)
+- `--sleep`: Seconds to sleep between resumption token requests (default: 0, no sleep)
 - `--output`: Output directory for dataset (default: `./eval_data`)
-- `--api-key`: API key for FOLIO authentication (optional)
+- `--exclude`: MARC tag to exclude (can be specified multiple times, e.g., `--exclude 655 --exclude 880`)
+
+**Filtering**:
+The fetch command automatically filters records to include only:
+- Books (Leader type 'a' or 't', bib level 'm')
+- Records with ISBN (020$a field present)
+- Non-deleted records (Leader status ≠ 'd')
+- Non-suppressed records (999$i ≠ 1)
+
+**Incremental Saving**:
+Records are saved to `dataset.json` immediately as they're harvested. You can stop the harvest at any time with Ctrl+C and resume later. Check progress:
+
+```bash
+# Monitor progress in real-time
+watch -n 1 'cat ./eval_data/dataset.json | jq ".items | length"'
+```
+
+**Resumption Token Sleep**:
+Use `--sleep` to be polite to the OAI-PMH server and avoid rate limiting:
+- `--sleep 1`: Wait 1 second between batches (typical OAI-PMH batch = 100-500 records)
+- `--sleep 2`: Wait 2 seconds (recommended for production servers)
+- `--sleep 5`: Wait 5 seconds (very conservative)
 
 **Output**:
-- `dataset.json`: Metadata for all fetched records
-- `images/`: Downloaded cover, title page, and copyright images
+- `dataset.json`: Metadata for all fetched records (saved incrementally)
 
 ### `eval run` - Run Evaluation
 
@@ -120,12 +148,12 @@ overall_score = Σ (field_weight × field_similarity) / Σ field_weight
 
 ## Example Workflow
 
-### 1. Fetch Records from VuFind
+### 1. Fetch Records from OAI-PMH
 
 ```bash
-eval fetch --catalog vufind \
-           --url https://find.lehigh.edu \
+eval fetch --url https://folio.lehigh.edu/oai \
            --limit 50 \
+           --sleep 2 \
            --output ./lehigh_eval
 ```
 
@@ -179,37 +207,63 @@ Field Accuracies:
 eval report --results ./lehigh_results --format csv > analysis.csv
 ```
 
-## VuFind Integration Notes
+## OAI-PMH Integration Notes
 
-The VuFind client expects:
-- **Search API**: `/api/v1/search` endpoint
-- **MARC Export**: `/Record/{id}/Export?style=MARC` endpoint
-- **Cover Images**: Configured in VuFind (MARC 856 fields or cover image service)
+The fetch command uses standard OAI-PMH protocol:
+- **ListRecords**: Harvests records with automatic resumption token handling
+- **Metadata Prefix**: Typically `marc21` or `marcxml`
+- **Resumption Tokens**: Automatically handled with configurable sleep delays
 
-### Customization
+### Supported Catalogs
 
-If your VuFind instance has custom endpoints, modify `internal/catalog/client.go`:
+Any system with OAI-PMH support:
+- **FOLIO**: `/oai` endpoint (e.g., `https://folio.example.edu/oai`)
+- **VuFind**: `/OAI/Server` endpoint (e.g., `https://vufind.example.edu/OAI/Server`)
+- **Koha**: `/cgi-bin/koha/oai.pl` endpoint
+- **DSpace**: `/oai/request` endpoint
+- **EPrints**: `/cgi/oai2` endpoint
 
-```go
-// Example: Custom MARC export endpoint
-marcURL := fmt.Sprintf("%s/api/custom/marc/%s", c.BaseURL, recordID)
+### Testing OAI-PMH Endpoints
+
+Verify your OAI-PMH endpoint:
+
+```bash
+# List available metadata formats
+curl "https://folio.example.edu/oai?verb=ListMetadataFormats"
+
+# Get a sample record
+curl "https://folio.example.edu/oai?verb=ListRecords&metadataPrefix=marc21&set=books"
 ```
-
-## FOLIO Integration Notes
-
-FOLIO support is planned but not yet fully implemented. The client expects:
-- **Okapi Gateway**: Standard FOLIO authentication
-- **Source Record Storage API**: `/source-storage/stream/marc-record-identifiers`
-- **X-Okapi-Token**: Authentication header
 
 ## Troubleshooting
 
-### "No image available for cataloging"
+### OAI-PMH Harvest Issues
 
-Ensure your catalog records have image URLs. For VuFind:
-1. Check MARC 856 fields contain image URLs
-2. Verify cover image service is configured
-3. Manually add image URLs to dataset.json if needed
+**Connection refused / timeout**:
+- Verify URL is accessible: `curl "https://folio.example.edu/oai?verb=Identify"`
+- Check firewall rules allow access
+- Try increasing sleep delay with `--sleep 5`
+
+**No records saved**:
+- Check if records have ISBNs (fetch only saves books with ISBN)
+- Verify metadata prefix is correct (try `--prefix marcxml` if `marc21` fails)
+- Look at debug logs: `LOG_LEVEL=DEBUG ./cataloger-eval fetch ...`
+
+**Rate limiting / HTTP 429**:
+- Increase `--sleep` parameter (try 5-10 seconds)
+- Reduce concurrent harvesting if running multiple fetches
+
+### Incremental Save Issues
+
+**dataset.json not updating**:
+- File is only written after each record processes successfully
+- Check disk space: `df -h`
+- Verify write permissions: `ls -la ./eval_data/`
+
+**Corrupted dataset.json**:
+- The file is rewritten completely on each save for consistency
+- If harvest crashes mid-write, delete `dataset.json` and restart
+- Consider backing up: `cp eval_data/dataset.json eval_data/dataset.json.bak`
 
 ### Low Similarity Scores
 
@@ -220,16 +274,6 @@ Common causes:
 - Publisher name variations
 
 Examine detailed field differences in the text report to identify patterns.
-
-### API Errors
-
-For VuFind:
-- Verify URL is accessible: `curl https://catalog.example.edu/api/v1/search`
-- Check API is enabled in VuFind config
-
-For FOLIO:
-- Ensure `--api-key` is provided
-- Verify Okapi token is valid
 
 ## Advanced Usage
 
@@ -251,9 +295,10 @@ Adjust comparison logic in `compareFieldContent()` to use custom thresholds for 
 
 ## Future Enhancements
 
-- Full FOLIO API implementation
-- Support for MARCXML format
-- Batch processing with checkpointing
+- Resume capability for interrupted harvests
+- Parallel OAI-PMH harvesting
+- Image fetching from external sources (OpenLibrary, Google Books)
+- Support for MARCXML format variations
 - nDCG scoring for ranked field importance
 - Subject heading vocabulary validation
 - Multi-language cataloging evaluation
@@ -262,5 +307,6 @@ Adjust comparison logic in `compareFieldContent()` to use custom thresholds for 
 ## See Also
 
 - [MARC 21 Format for Bibliographic Data](https://www.loc.gov/marc/bibliographic/)
-- [VuFind API Documentation](https://vufind.org/wiki/development:architecture:api)
-- [FOLIO Source Record Storage](https://wiki.folio.org/display/DD/Source+Record+Storage)
+- [OAI-PMH Protocol Specification](https://www.openarchives.org/pmh/)
+- [FOLIO OAI-PMH Documentation](https://wiki.folio.org/display/FOLIOtips/FOLIO+OAI-PMH)
+- [VuFind OAI Server](https://vufind.org/wiki/configuration:oai_server)
