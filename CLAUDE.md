@@ -6,75 +6,80 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Cataloger is a web-based book metadata cataloging tool that generates MARC records from images of book title pages using vision-capable LLMs (Ollama or OpenAI).
 
-**Current Status**: MVP complete with working MARC generation from title page images.
+**Current Status**: MVP complete with working MARC generation and comprehensive evaluation tools.
 
 ## 📚 Critical Documentation References
+- **README**: `./README.md` - Main project documentation, quick start, and evaluation guide
 - **Go Conventions**: `./docs/GO_CONVENTIONS.md` 📋
 - **Project Architecture**: `./docs/ARCHITECTURE.md`
-- **Security Policy**: `./SECURITY.md`
-- **Contributing Guide**: `./CONTRIBUTING.md`
 - **Evaluation Guide**: `./docs/EVALUATION.md`
+- **Dataset Setup**: `./docs/PARTIAL_DATASET.md`
 
 ## Current Features (Implemented)
 
-### ✅ Image Upload
+### ✅ Web Interface
 - File upload (up to 10MB)
 - URL upload
 - Three image types: cover, title_page, copyright
 - MD5-based file storage to prevent duplicates
+- Dark-themed UI with provider/model selection
+- Real-time session list with modal display
 
 ### ✅ MARC Generation
 - Automatic MARC record generation from title page images
 - Multi-provider support (Ollama, OpenAI)
 - Expert-level prompt designed for Library of Congress standards
 - Low temperature (0.1) for consistent, factual output
-
-### ✅ Provider Configuration
-- **Ollama**: Local or remote instances via OLLAMA_URL
-- **OpenAI**: GPT-4o, GPT-4o-mini, GPT-4-turbo
-- Dynamic model selection per upload
 - Provider/model info stored with sessions
 
-### ✅ Session Management
-- In-memory session storage
-- View uploaded images and generated MARC records
-- Click sessions to view details in modal
-
-### ✅ Frontend
-- Clean dark-themed UI
-- Provider and model dropdowns
-- Image type selection
-- Real-time session list
-- Modal display of images and MARC records
-
 ### ✅ Evaluation CLI
-- Harvest records from OAI-PMH endpoints (FOLIO, VuFind, Koha, etc.)
-- Incremental dataset saving (records saved immediately during harvest)
-- Resumption token support with configurable sleep delays
-- Automatic filtering (books with ISBN only, excludes deleted/suppressed)
-- Compare LLM-generated MARC against professional catalog records
-- Field-by-field comparison with weighted scoring
-- Levenshtein distance for similarity measurement
-- Text, JSON, and CSV report formats
-- Concurrent evaluation processing
+- **Institutional Books 1.0 Dataset Support** (983K books)
+  - Parquet file reading with debug logging
+  - Fast loading (sub-second for 100 records)
+  - OCR text extraction for evaluation
+- **OAI-PMH Harvesting**
+  - Incremental dataset saving (records saved immediately)
+  - Resumption token support with configurable sleep delays
+  - Automatic filtering (books with ISBN only, excludes deleted/suppressed)
+- **MARC Comparison**
+  - Field-by-field comparison with weighted scoring
+  - Levenshtein distance for similarity measurement
+  - Text, JSON, and CSV report formats
+- **Concurrent Processing**
+  - Configurable concurrency for faster evaluation
 
 ## Architecture
 
+### Unified Binary
+
+The project uses a single `cataloger` binary with subcommands:
+
+```bash
+cataloger serve           # Web server (default)
+cataloger eval <cmd>      # Evaluation commands
+```
+
 ### Backend (Go)
-- **main.go**: HTTP server on port 8888
-- **cmd/eval/**: Evaluation CLI tool
-  - `main.go`: CLI command routing with `--sleep` parameter support
-  - `fetch.go`: OAI-PMH harvesting with incremental saving and resumption token sleep
-  - `run.go`: Batch evaluation with metrics
-  - `report.go`: Report generation (text/JSON/CSV)
+
+- **main.go**: Unified entry point, routes to serve or eval
+- **cmd/serve/**: Web server implementation (internal)
+- **cmd/eval/**: Eval CLI implementation (internal)
+- **internal/evalcmd/**: Eval command package (used by main.go)
 - **internal/cataloging/service.go**: MARC generation with multi-provider support
   - `GenerateMARCFromImage()`: Main entry point
+  - `GenerateMARCFromOCR()`: Generate from OCR text
   - `generateWithOllama()`: Ollama API integration
   - `generateWithOpenAI()`: OpenAI Vision API integration
   - `buildMARCPrompt()`: Expert cataloger prompt
+- **internal/ocr/service.go**: LLM-based OCR extraction
+  - `ExtractTextFromImage()`: OCR extraction entry point
+  - Temperature 0.0 for accurate text extraction
 - **internal/evaluation/**: MARC comparison engine
   - `comparison.go`: Field-by-field comparison with Levenshtein distance
-  - `dataset.go`: Dataset and results persistence with incremental save support (AppendDatasetItem)
+  - `dataset.go`: Dataset and results persistence with incremental save support
+- **internal/eval/dataset/**: Dataset loaders
+  - `loader.go`: Parquet and JSONL loading with debug logging
+  - `models.go`: InstitutionalBooksRecord struct with parquet tags
 - **internal/handlers/**: HTTP endpoints
   - `upload.go`: File and URL upload with validation
   - `sessions.go`: Session CRUD operations
@@ -83,7 +88,7 @@ Cataloger is a web-based book metadata cataloging tool that generates MARC recor
   - `common.go`: Shared utilities and session creation
 - **internal/models/models.go**: Data structures
   - `CatalogSession`: Session with images, MARC, provider/model
-  - `ImageItem`: Image metadata
+  - `ImageItem`: Image metadata with OCR text field
 - **internal/storage/**: In-memory session store
 - **internal/utils/**: MD5 hashing and error handling
 
@@ -91,6 +96,34 @@ Cataloger is a web-based book metadata cataloging tool that generates MARC recor
 - **static/index.html**: Single-page app
 - **static/script.js**: Upload, session management, modal display
 - **static/styles.css**: Dark theme with provider selection UI
+
+## Commands
+
+### Web Server
+
+```bash
+go run main.go              # Default: starts web server
+go run main.go serve        # Explicit server start
+```
+
+### Evaluation
+
+```bash
+# Institutional Books evaluation
+cataloger eval eval-ib --sample 10 --verbose
+
+# OAI-PMH harvest
+cataloger eval fetch --url https://folio.edu/oai --limit 100 --sleep 2
+
+# Enrich dataset
+cataloger eval enrich --dataset ./eval_data --output ./enriched_data
+
+# Run evaluation
+cataloger eval run --dataset ./eval_data --provider ollama --concurrency 4
+
+# Generate report
+cataloger eval report --results ./eval_results --format text
+```
 
 ## API Endpoints
 
@@ -114,6 +147,7 @@ OPENAI_MODEL=gpt-4o                       # default OpenAI model
 
 # Optional
 CATALOGING_PROVIDER=ollama                # default provider (ollama|openai)
+LOG_LEVEL=DEBUG                           # logging level
 ```
 
 ## Development Commands
@@ -122,6 +156,10 @@ CATALOGING_PROVIDER=ollama                # default provider (ollama|openai)
 ```bash
 # Run server
 go run main.go
+
+# Run with specific command
+go run main.go serve
+go run main.go eval eval-ib --sample 5
 
 # Format code
 gofmt -w .
@@ -142,7 +180,20 @@ docker build -t cataloger .
 docker run -p 8888:8888 --env-file .env cataloger
 ```
 
-### Testing
+### Build
+```bash
+# Build unified binary
+go build -o cataloger .
+
+# Test commands
+./cataloger --help
+./cataloger serve &
+./cataloger eval eval-ib --sample 5
+```
+
+## Testing
+
+### Manual Testing
 ```bash
 # Upload via curl (file)
 curl -X POST -F "file=@test.jpg" \
@@ -155,6 +206,9 @@ curl -X POST -F "file=@test.jpg" \
 curl -X POST http://localhost:8888/api/upload \
   -H "Content-Type: application/json" \
   -d '{"image_url":"https://example.com/title.jpg","image_type":"title_page","provider":"openai","model":"gpt-4o"}'
+
+# Eval with verbose logging
+./cataloger eval eval-ib --verbose --sample 2
 ```
 
 ## Security Features
@@ -165,7 +219,11 @@ curl -X POST http://localhost:8888/api/upload \
 - API keys in environment variables only
 - `.env` file gitignored
 
-See `SECURITY.md` for complete security considerations.
+### Security Considerations
+- File size limits prevent DoS attacks
+- MD5 hashing prevents path traversal
+- Environment variables keep credentials secure
+- No sensitive data in git repository
 
 ## MARC Generation Prompt
 
@@ -177,6 +235,22 @@ The system uses a detailed prompt that positions the LLM as an expert Library of
 - Includes cataloger's notes for observations
 - Handles edge cases (facsimiles, reprints, translations)
 
+## Dataset Structure
+
+### Institutional Books 1.0
+
+- **Size**: ~1TB total, 983,004 books
+- **Format**: 9,831 Parquet files (~100 books each, ~100MB per file)
+- **Fields**: barcode, title, author, dates, OCR text (page-by-page), identifiers (ISBN/LCCN/OCLC)
+- **Access**: Gated dataset, requires HuggingFace account and terms acceptance
+- **Loading**: Parquet files loaded with `parquet-go` library, supports sampling
+
+The loader includes debug logging to verify correct data reading:
+- File stats (size, row count)
+- Batch reading progress
+- Sample data from first record
+- Total load time
+
 ## Known Limitations
 
 - **No authentication** - suitable for internal use only
@@ -185,62 +259,80 @@ The system uses a detailed prompt that positions the LLM as an expert Library of
 - **Basic validation** - no advanced security hardening
 - **Single image per session** - multi-image support planned
 - **No MARC editing** - only view generated records
-- **No MARC export** - copy/paste only
+- **No MARC export** - copy/paste only (export planned for Phase 4)
 
 ## Roadmap
 
-### Phase 2: Enhanced Metadata (Planned)
-- Multi-image sessions (cover + title + copyright)
-- MARC record editing interface
-- MARC export (ISO 2709, MARCXML, JSON)
-- Template matching for edge cases
-- Subject classification using embeddings
+### Phase 1: Image Upload ✅ (Complete)
+- File and URL upload
+- Basic session management
+- Simple web interface
+
+### Phase 2: MARC Generation ✅ (Complete)
+- LLM vision model integration
+- Multi-provider support (Ollama, OpenAI)
+- Provider/model selection in UI
 
 ### Phase 3: Evaluation ✅ (Complete)
-- OAI-PMH harvesting from any compatible catalog
+- Institutional Books 1.0 dataset support
+- OAI-PMH harvesting from any catalog
 - Incremental dataset building with real-time progress
 - Field-weighted MARC comparison
 - Comprehensive evaluation reports
+- Concurrent processing
 
-### Phase 4: Enhanced Evaluation (Planned)
-- Resume capability for interrupted harvests
-- Parallel OAI-PMH harvesting
-- Image fetching from external sources (OpenLibrary, Google Books)
-- nDCG scoring for ranked field importance
-
-### Phase 5: Production Ready (Planned)
-- Authentication and authorization
-- Rate limiting
-- Database persistence
-- Session expiration
-- Audit logging
-- Azure/Gemini provider support
+### Phase 4: Advanced Features (Planned)
 - Multi-language support (Spanish, Ukrainian)
+- Subject classification using embeddings (Qwen 0.6b)
+- MARC export (ISO 2709, MARCXML, JSON)
+- Azure/Gemini provider support
+- Record editing interface
+- Multi-image sessions
+- Database persistence
+- Authentication and rate limiting
+- nDCG scoring for ranked field importance
 
 ## Contributing
 
-See `CONTRIBUTING.md` for:
-- Development setup
-- Code standards
-- Pull request process
-- How to add new providers
+Follow the Go conventions in `docs/GO_CONVENTIONS.md`:
+- Use `gofmt` for formatting
+- Run `golangci-lint` before committing
+- Add tests for new features
+- Document public APIs
 
 ## File Structure
 
 ```
 cataloger/
-├── main.go                      # Entry point
-├── cmd/eval/                    # Evaluation CLI
-│   ├── main.go                 # CLI routing with --sleep parameter
-│   ├── fetch.go                # OAI-PMH harvest with incremental save
-│   ├── run.go                  # Batch evaluation
-│   └── report.go               # Report generation
+├── main.go                      # Unified entry point
+├── cmd/
+│   ├── serve/main.go           # Web server (internal)
+│   └── eval/                   # Eval commands (internal, for reference)
+│       ├── main.go             # CLI routing
+│       ├── fetch.go            # OAI-PMH harvest
+│       ├── enrich.go           # Dataset enrichment
+│       ├── run.go              # Batch evaluation
+│       ├── report.go           # Report generation
+│       └── eval_ib.go          # Institutional Books evaluator
 ├── internal/
 │   ├── cataloging/
 │   │   └── service.go          # MARC generation with LLMs
+│   ├── ocr/
+│   │   └── service.go          # OCR extraction with LLMs
 │   ├── evaluation/
 │   │   ├── comparison.go       # Field comparison with Levenshtein
 │   │   └── dataset.go          # Dataset persistence (incremental)
+│   ├── eval/
+│   │   └── dataset/
+│   │       ├── loader.go       # Parquet/JSONL loader with debug logging
+│   │       └── models.go       # InstitutionalBooksRecord struct
+│   ├── evalcmd/                # Eval CLI package (used by main.go)
+│   │   ├── main.go             # Command routing
+│   │   ├── fetch.go            # OAI-PMH implementation
+│   │   ├── enrich.go           # Enrichment implementation
+│   │   ├── run.go              # Evaluation runner
+│   │   ├── report.go           # Report generator
+│   │   └── eval_ib.go          # IB evaluator
 │   ├── handlers/
 │   │   ├── common.go           # Shared handler utilities
 │   │   ├── upload.go           # File/URL upload
@@ -248,7 +340,7 @@ cataloger/
 │   │   ├── image_processing.go # Image handling
 │   │   └── static.go           # Static files
 │   ├── models/
-│   │   └── models.go           # Data structures
+│   │   └── models.go           # Data structures (with OCRText field)
 │   ├── storage/
 │   │   └── storage.go          # In-memory store
 │   └── utils/
@@ -261,11 +353,9 @@ cataloger/
 ├── docs/
 │   ├── ARCHITECTURE.md         # Detailed architecture
 │   ├── EVALUATION.md           # Evaluation guide
+│   ├── PARTIAL_DATASET.md      # Git LFS selective checkout
 │   └── GO_CONVENTIONS.md       # Go style guide
-├── SECURITY.md                 # Security considerations
-├── CONTRIBUTING.md             # Contribution guide
-├── README.md                   # User-facing docs
-├── sample.env                  # Example configuration
+├── README.md                   # Main documentation
 └── uploads/                    # Uploaded images (gitignored)
 ```
 
@@ -276,6 +366,8 @@ cataloger/
 3. **Frontend changes**: Edit `static/` files directly, no build step needed
 4. **Testing locally**: Use Ollama for faster iteration (no API costs)
 5. **Production**: Use OpenAI for better quality MARC records
+6. **Debugging dataset loading**: Use `--verbose` flag to see debug logs
+7. **New eval command**: Add to `internal/evalcmd/` and update switch in `main.go`
 
 ## Common Issues
 
@@ -283,3 +375,5 @@ cataloger/
 **"connection refused"**: Check OLLAMA_URL points to running instance
 **"API key error"**: Verify OPENAI_API_KEY is set in .env
 **File upload fails**: Check file size < 10MB and is valid image format
+**Empty parquet data**: Ensure struct has `parquet:"field_name"` tags matching schema
+**Slow evaluation**: Check LLM response time, not dataset loading (loading is sub-second)

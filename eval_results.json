@@ -1,0 +1,63 @@
+{
+  "TotalRecords": 1,
+  "SuccessCount": 0,
+  "FailureCount": 1,
+  "TitleAccuracy": {
+    "ExactMatches": 0,
+    "FuzzyMatches": 0,
+    "NoMatches": 0,
+    "MissingFields": 0,
+    "AverageScore": 0,
+    "Scores": []
+  },
+  "AuthorAccuracy": {
+    "ExactMatches": 0,
+    "FuzzyMatches": 0,
+    "NoMatches": 0,
+    "MissingFields": 0,
+    "AverageScore": 0,
+    "Scores": []
+  },
+  "DateAccuracy": {
+    "ExactMatches": 0,
+    "FuzzyMatches": 0,
+    "NoMatches": 0,
+    "MissingFields": 0,
+    "AverageScore": 0,
+    "Scores": []
+  },
+  "ISBNAccuracy": {
+    "ExactMatches": 0,
+    "FuzzyMatches": 0,
+    "NoMatches": 0,
+    "MissingFields": 0,
+    "AverageScore": 0,
+    "Scores": []
+  },
+  "SubjectAccuracy": {
+    "ExactMatches": 0,
+    "FuzzyMatches": 0,
+    "NoMatches": 0,
+    "MissingFields": 0,
+    "AverageScore": 0,
+    "Scores": []
+  },
+  "OverallAccuracy": 0,
+  "AverageProcessingTime": 0,
+  "TotalProcessingTime": 30002979583,
+  "Results": [
+    {
+      "Barcode": "32044000000018",
+      "Title": "Geology of Massachusetts and Rhode Island.",
+      "Author": "Emerson, Benjamin Kendall",
+      "GeneratedMARC": "",
+      "Comparison": null,
+      "ProcessingTime": 30002979583,
+      "Error": "MARC generation failed: failed to call Ollama API for OCR-based MARC: Post \"https://isle-microservices.cc.lehigh.edu/ollama/api/generate\": dial tcp 128.180.2.28:443: i/o timeout"
+    }
+  ],
+  "EvaluationDate": "2025-10-20T13:03:58.982563-04:00",
+  "Provider": "ollama",
+  "Model": "",
+  "SampleSize": 1
+}

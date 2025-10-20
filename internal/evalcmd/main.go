@@ -1,4 +1,4 @@
-package main
+package evalcmd
 
 import (
 	"flag"
@@ -6,23 +6,19 @@ import (
 	"log/slog"
 	"os"
 	"strings"
-
-	"github.com/joho/godotenv"
 )
 
 const (
 	version = "0.1.0"
 )
 
-func main() {
+// Run executes the eval command
+func Run() {
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
 	}
-	err := godotenv.Load()
-	if err != nil {
-		slog.Warn("Error loading .env file", "err", err)
-	}
+	// godotenv already loaded in main.go
 	setupLogger()
 
 	command := os.Args[1]
