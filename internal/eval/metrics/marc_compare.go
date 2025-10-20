@@ -38,19 +38,22 @@ func NewMARCParser() *MARCParser {
 
 // ExtractTitle extracts the title from a MARC record (field 245)
 func (p *MARCParser) ExtractTitle(marcRecord string) string {
-	// Look for =245 field
-	re := regexp.MustCompile(`(?i)=245\s+.*?\$a\s*([^$\n]+)`)
+	// Look for 245 field (with or without = prefix)
+	re := regexp.MustCompile(`(?m)^=?245\s+.*?\$a\s*([^$\n]+)`)
 	matches := re.FindStringSubmatch(marcRecord)
 	if len(matches) > 1 {
-		return strings.TrimSpace(matches[1])
+		title := strings.TrimSpace(matches[1])
+		// Remove trailing punctuation like / or :
+		title = strings.TrimRight(title, " /:")
+		return title
 	}
 	return ""
 }
 
 // ExtractAuthor extracts the author from a MARC record (field 100)
 func (p *MARCParser) ExtractAuthor(marcRecord string) string {
-	// Look for =100 field (main author)
-	re := regexp.MustCompile(`(?i)=100\s+.*?\$a\s*([^$\n]+)`)
+	// Look for 100 field (with or without = prefix)
+	re := regexp.MustCompile(`(?m)^=?100\s+.*?\$a\s*([^$\n]+)`)
 	matches := re.FindStringSubmatch(marcRecord)
 	if len(matches) > 1 {
 		return strings.TrimSpace(matches[1])
@@ -60,8 +63,8 @@ func (p *MARCParser) ExtractAuthor(marcRecord string) string {
 
 // ExtractDate extracts the publication date from a MARC record (field 260/264)
 func (p *MARCParser) ExtractDate(marcRecord string) string {
-	// Look for =260 or =264 field with $c (date)
-	re := regexp.MustCompile(`(?i)=(260|264)\s+.*?\$c\s*([^$\n]+)`)
+	// Look for 260 or 264 field with $c (date) - with or without = prefix
+	re := regexp.MustCompile(`(?m)^=?(260|264)\s+.*?\$c\s*([^$\n]+)`)
 	matches := re.FindStringSubmatch(marcRecord)
 	if len(matches) > 2 {
 		return strings.TrimSpace(matches[2])
@@ -71,8 +74,8 @@ func (p *MARCParser) ExtractDate(marcRecord string) string {
 
 // ExtractISBN extracts ISBN from a MARC record (field 020)
 func (p *MARCParser) ExtractISBN(marcRecord string) string {
-	// Look for =020 field with $a (ISBN)
-	re := regexp.MustCompile(`(?i)=020\s+.*?\$a\s*([^$\n]+)`)
+	// Look for 020 field with $a (ISBN) - with or without = prefix
+	re := regexp.MustCompile(`(?m)^=?020\s+.*?\$a\s*([^$\n]+)`)
 	matches := re.FindStringSubmatch(marcRecord)
 	if len(matches) > 1 {
 		isbn := strings.TrimSpace(matches[1])
@@ -85,8 +88,8 @@ func (p *MARCParser) ExtractISBN(marcRecord string) string {
 
 // ExtractSubject extracts subject headings from a MARC record (fields 6XX)
 func (p *MARCParser) ExtractSubject(marcRecord string) string {
-	// Look for =6XX fields
-	re := regexp.MustCompile(`(?i)=6[0-9]{2}\s+.*?\$a\s*([^$\n]+)`)
+	// Look for 6XX fields - with or without = prefix
+	re := regexp.MustCompile(`(?m)^=?6[0-9]{2}\s+.*?\$a\s*([^$\n]+)`)
 	matches := re.FindAllStringSubmatch(marcRecord, -1)
 
 	var subjects []string
@@ -166,7 +169,7 @@ func compareField(expected, actual, fieldName string) FieldMatch {
 
 	// Handle missing fields
 	if expected == "" && actual == "" {
-		match.Score = 0.0
+		match.Score = 0.5
 		match.Method = "both_missing"
 		match.Notes = "Both fields are empty"
 		return match

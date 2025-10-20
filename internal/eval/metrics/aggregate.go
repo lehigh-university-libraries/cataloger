@@ -79,6 +79,7 @@ func AggregateEvaluationResults(results []EvaluationResult, provider, model stri
 
 	totalOverallScore := 0.0
 	var totalDuration time.Duration
+	var successDuration time.Duration
 
 	for _, result := range results {
 		totalDuration += result.ProcessingTime
@@ -89,6 +90,7 @@ func AggregateEvaluationResults(results []EvaluationResult, provider, model stri
 		}
 
 		agg.SuccessCount++
+		successDuration += result.ProcessingTime
 
 		if result.Comparison == nil {
 			continue
@@ -121,7 +123,7 @@ func AggregateEvaluationResults(results []EvaluationResult, provider, model stri
 		agg.ISBNAccuracy.AverageScore = calculateAverage(agg.ISBNAccuracy.Scores)
 		agg.SubjectAccuracy.AverageScore = calculateAverage(agg.SubjectAccuracy.Scores)
 		agg.OverallAccuracy = totalOverallScore / float64(agg.SuccessCount)
-		agg.AverageProcessingTime = totalDuration / time.Duration(agg.SuccessCount)
+		agg.AverageProcessingTime = successDuration / time.Duration(agg.SuccessCount)
 	}
 
 	agg.TotalProcessingTime = totalDuration
@@ -234,12 +236,14 @@ func (a *AggregateResults) SaveDetailedReport(filepath string) error {
 	fmt.Fprintf(file, "CATALOGER EVALUATION DETAILED REPORT\n")
 	fmt.Fprintf(file, "Generated: %s\n", a.EvaluationDate.Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(file, "Provider: %s, Model: %s\n", a.Provider, a.Model)
-	fmt.Fprintf(file, strings.Repeat("=", 80)+"\n\n")
+	separator := strings.Repeat("=", 80)
+	fmt.Fprintf(file, "%s\n\n", separator)
 
 	// Write individual results
+	dash := strings.Repeat("-", 80)
 	for i, result := range a.Results {
 		fmt.Fprintf(file, "RECORD %d: %s\n", i+1, result.Barcode)
-		fmt.Fprintf(file, strings.Repeat("-", 80)+"\n")
+		fmt.Fprintf(file, "%s\n", dash)
 		fmt.Fprintf(file, "Title: %s\n", result.Title)
 		fmt.Fprintf(file, "Author: %s\n", result.Author)
 		fmt.Fprintf(file, "Processing Time: %s\n", result.ProcessingTime)
@@ -275,7 +279,7 @@ func (a *AggregateResults) SaveDetailedReport(filepath string) error {
 			fmt.Fprintf(file, "\nOverall Score: %.2f%%\n", result.Comparison.OverallScore*100)
 		}
 
-		fmt.Fprintf(file, "\n"+strings.Repeat("=", 80)+"\n\n")
+		fmt.Fprintf(file, "\n%s\n\n", separator)
 	}
 
 	return nil
