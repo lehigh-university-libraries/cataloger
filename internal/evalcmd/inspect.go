@@ -2,37 +2,54 @@ package evalcmd
 
 import (
 	"bufio"
-	"flag"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/lehigh-university-libraries/cataloger/internal/eval/dataset"
+	"github.com/spf13/cobra"
 )
 
-func inspectCmd() {
-	fs := flag.NewFlagSet("inspect", flag.ExitOnError)
-	datasetPath := fs.String("dataset", "", "Path to parquet or jsonl dataset file (required)")
-	limit := fs.Int("limit", 10, "Number of records to inspect (0 for all)")
-	interactive := fs.Bool("interactive", false, "Pause after each record (press Enter to continue)")
-	showOCR := fs.Bool("ocr", true, "Show OCR text")
-	showMetadata := fs.Bool("metadata", true, "Show metadata (title, author, date, ISBN)")
+// NewInspectCmd creates the inspect command
+func NewInspectCmd() *cobra.Command {
+	var datasetPath string
+	var limit int
+	var interactive bool
+	var showOCR bool
+	var showMetadata bool
 
-	if err := fs.Parse(os.Args[2:]); err != nil {
-		fmt.Printf("Error parsing flags: %v\n", err)
-		os.Exit(1)
+	cmd := &cobra.Command{
+		Use:   "inspect",
+		Short: "Inspect dataset records (useful for examining OCR text)",
+		Long: `Inspect records from a parquet or jsonl dataset file.
+
+This command is useful for examining OCR text, metadata, and determining
+appropriate character/page limits for sending to LLMs.`,
+		Example: `  # Inspect first 5 records interactively
+  cataloger eval inspect --dataset ./data.parquet --limit 5 --interactive
+
+  # Show only OCR text
+  cataloger eval inspect --dataset ./data.parquet --metadata=false
+
+  # Inspect all records (no limit)
+  cataloger eval inspect --dataset ./data.parquet --limit 0`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if datasetPath == "" {
+				return fmt.Errorf("--dataset is required")
+			}
+			return executeInspect(datasetPath, limit, interactive, showOCR, showMetadata)
+		},
 	}
 
-	if *datasetPath == "" {
-		fmt.Println("Error: --dataset is required")
-		fs.PrintDefaults()
-		os.Exit(1)
-	}
+	cmd.Flags().StringVar(&datasetPath, "dataset", "", "Path to parquet or jsonl dataset file (required)")
+	cmd.Flags().IntVar(&limit, "limit", 10, "Number of records to inspect (0 for all)")
+	cmd.Flags().BoolVar(&interactive, "interactive", false, "Pause after each record (press Enter to continue)")
+	cmd.Flags().BoolVar(&showOCR, "ocr", true, "Show OCR text")
+	cmd.Flags().BoolVar(&showMetadata, "metadata", true, "Show metadata (title, author, date, ISBN)")
 
-	if err := executeInspect(*datasetPath, *limit, *interactive, *showOCR, *showMetadata); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
+	_ = cmd.MarkFlagRequired("dataset")
+
+	return cmd
 }
 
 func executeInspect(datasetPath string, limit int, interactive, showOCR, showMetadata bool) error {

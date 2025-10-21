@@ -4,11 +4,10 @@ BINARY_NAME=cataloger
 LLM_PROVIDER=openai
 
 deps:
-	go get .
 	go mod tidy
 
 build: deps
-	go build -o $(BINARY_NAME) .
+	go build -o $(BINARY_NAME)
 
 lint:
 	go fmt ./...
