@@ -20,4 +20,5 @@ type ImageItem struct {
 	ImageType   string `json:"image_type"` // "cover", "title_page", "copyright"
 	ImageWidth  int    `json:"image_width"`
 	ImageHeight int    `json:"image_height"`
+	OCRText     string `json:"ocr_text,omitempty"` // Extracted OCR text from the image
 }

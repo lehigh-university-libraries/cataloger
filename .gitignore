@@ -1,3 +1,9 @@
 .env
 cataloger
 uploads/
+cataloger-eval
+eval_data/
+enriched_data/
+institutional-books-1.0/
+eval_report.txt
+eval_results.json
