@@ -1,4 +1,4 @@
-.PHONY: build deps lint test
+.PHONY: build deps lint test serve eval-ib
 
 BINARY_NAME=cataloger
 
@@ -23,3 +23,8 @@ lint:
 test: build
 	go test -v -race ./...
 
+serve: build
+	./cataloger serve
+
+eval-ib: build
+	./cataloger eval ib --sample 2 --verbose

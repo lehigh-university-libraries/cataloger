@@ -7,9 +7,7 @@ A web-based book metadata cataloging tool that generates MARC records from image
 ### Web Server
 
 ```bash
-# Build and run
-go build -o cataloger .
-./cataloger serve  # or just ./cataloger
+make serve
 
 # Or with Docker
 docker compose up --build -d
@@ -21,7 +19,7 @@ docker compose up --build -d
 
 ```bash
 # Build
-go build -o cataloger .
+make build
 
 # Evaluate with Institutional Books dataset
 ./cataloger eval eval-ib --sample 10

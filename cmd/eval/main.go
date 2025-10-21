@@ -38,6 +38,8 @@ func main() {
 		reportCmd()
 	case "eval-ib":
 		evalIBCmd()
+	case "inspect":
+		inspectCmd()
 	case "version":
 		fmt.Printf("cataloger-eval version %s\n", version)
 	case "help", "-h", "--help":
@@ -89,6 +91,7 @@ Usage:
   eval run [options]      Run evaluation on dataset
   eval report [options]   Generate detailed comparison report
   eval eval-ib [options]  Evaluate using Institutional Books 1.0 dataset
+  eval inspect [options]  Inspect dataset records (useful for examining OCR text)
   eval version            Print version
   eval help               Show this help
 
@@ -104,6 +107,9 @@ Examples:
 
   # Evaluate with Institutional Books dataset
   eval eval-ib --dataset ./institutional-books-1.0/data/train-00000-of-09831.parquet --sample 10
+
+  # Inspect dataset to see OCR text and metadata
+  eval inspect --dataset ./institutional-books-1.0/data/train-00000-of-09831.parquet --limit 5 --interactive
 
   # Generate detailed report
   eval report --results ./eval_results

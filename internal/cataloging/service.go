@@ -102,7 +102,7 @@ func (s *Service) generateWithOllama(imagePath, model string) (string, error) {
 	base64Image := base64.StdEncoding.EncodeToString(imageData)
 
 	// Prepare Ollama request
-	prompt := s.buildMARCPrompt()
+	prompt := s.buildMARCPromptForImage()
 
 	requestBody := map[string]interface{}{
 		"model":  model,
@@ -148,20 +148,41 @@ func (s *Service) generateWithOllama(imagePath, model string) (string, error) {
 	return ollamaResp.Response, nil
 }
 
-func (s *Service) buildMARCPromptForOCR() string {
-	return `You are an expert cataloging librarian working for The Library of Congress with over 30 years of experience creating MARC (Machine-Readable Cataloging) records. You are recognized internationally for your expertise in bibliographic description and have trained countless librarians in proper MARC cataloging practices.
+// buildMARCPrompt generates a MARC cataloging prompt based on the source type
+func (s *Service) buildMARCPrompt(sourceType string) string {
+	// Source-specific instructions
+	var sourceInstructions string
+	var missingFieldNote string
+	var generationNote string
 
-Your task is to analyze the OCR text extracted from a book title page and create a complete, professional MARC 21 bibliographic record that meets Library of Congress cataloging standards.
+	switch sourceType {
+	case "ocr":
+		sourceInstructions = "Carefully analyze ALL information in the OCR text including:"
+		missingFieldNote = "If any information is missing from the OCR text, note it as \"[not available in OCR]\""
+		generationNote = "Include a 500 note explaining that this record was \"Generated from OCR text of title page\""
+	case "image":
+		sourceInstructions = "Carefully examine ALL information visible on the title page including:"
+		missingFieldNote = "If any information is not visible on the title page, note it as \"[not visible on title page]\""
+		generationNote = "Include a 500 note explaining that this record was \"Generated from title page image\""
+	default:
+		sourceInstructions = "Carefully examine ALL information in the source material including:"
+		missingFieldNote = "If any information is not available, note it as \"[not available]\""
+		generationNote = "Include a 500 note explaining how this record was generated"
+	}
+
+	return fmt.Sprintf(`You are an expert cataloging librarian working for The Library of Congress with over 30 years of experience creating MARC (Machine-Readable Cataloging) records. You are recognized internationally for your expertise in bibliographic description and have trained countless librarians in proper MARC cataloging practices.
+
+Your task is to analyze the book title page %s and create a complete, professional MARC 21 bibliographic record that meets Library of Congress cataloging standards.
 
 INSTRUCTIONS:
-1. Carefully analyze ALL information in the OCR text including:
+1. %s
    - Main title and subtitle
    - Author(s) and their roles (author, editor, translator, etc.)
    - Publisher name and location
    - Publication date
    - Edition statement (if present)
    - Series information (if present)
-   - ISBN (if present)
+   - %s
    - Any other relevant bibliographic details
 
 2. Create a MARC record using standard MARC 21 format with the following key fields:
@@ -183,9 +204,9 @@ INSTRUCTIONS:
    - Use proper capitalization (only first word and proper nouns in titles)
    - Include correct MARC indicators for each field
    - Use appropriate subfield codes ($a, $b, $c, etc.)
-   - If any information is missing from the OCR text, note it as "[not available in OCR]"
+   - %s
    - Make reasonable inferences for subject headings based on the title and content
-   - Include a 500 note explaining that this record was "Generated from OCR text of title page"
+   - %s
 
 5. If you identify any special characteristics (facsimile edition, reprint, translation, etc.), make sure to include appropriate MARC fields and notes.
 
@@ -200,61 +221,21 @@ MARC RECORD:
 
 Include all relevant MARC fields in numerical order. After the MARC record, provide a brief "CATALOGER'S NOTES" section with any observations or uncertainties about the bibliographic information.
 
-Be thorough, precise, and follow Library of Congress Rule Interpretations (LCRIs) and MARC 21 standards exactly.`
+Be thorough, precise, and follow Library of Congress Rule Interpretations (LCRIs) and MARC 21 standards exactly.`,
+		map[string]string{"ocr": "OCR text", "image": "image provided"}[sourceType],
+		sourceInstructions,
+		map[string]string{"ocr": "ISBN (if present)", "image": "ISBN (if visible)"}[sourceType],
+		missingFieldNote,
+		generationNote,
+	)
 }
 
-func (s *Service) buildMARCPrompt() string {
-	return `You are an expert cataloging librarian working for The Library of Congress with over 30 years of experience creating MARC (Machine-Readable Cataloging) records. You are recognized internationally for your expertise in bibliographic description and have trained countless librarians in proper MARC cataloging practices.
+func (s *Service) buildMARCPromptForOCR() string {
+	return s.buildMARCPrompt("ocr")
+}
 
-Your task is to analyze the book title page image provided and create a complete, professional MARC 21 bibliographic record that meets Library of Congress cataloging standards.
-
-INSTRUCTIONS:
-1. Carefully examine ALL information visible on the title page including:
-   - Main title and subtitle
-   - Author(s) and their roles (author, editor, translator, etc.)
-   - Publisher name and location
-   - Publication date
-   - Edition statement (if present)
-   - Series information (if present)
-   - Any other relevant bibliographic details
-
-2. Create a MARC record using standard MARC 21 format with the following key fields:
-   - Leader (record structure)
-   - 008 (fixed-length data elements)
-   - 020 (ISBN if visible)
-   - 100/110/111 (Main entry - personal/corporate/meeting name)
-   - 245 (Title statement with proper indicators)
-   - 250 (Edition statement)
-   - 260/264 (Publication information)
-   - 300 (Physical description - you may indicate "to be determined" for pagination)
-   - 490/8XX (Series statement if applicable)
-   - 6XX (Subject headings - provide appropriate LCSH terms based on title/content)
-   - 700 (Added entries for additional authors/contributors)
-
-3. Format your response as a proper MARC record using the mnemonic format (tag, indicators, subfields).
-
-4. Follow these cataloging best practices:
-   - Use proper capitalization (only first word and proper nouns in titles)
-   - Include correct MARC indicators for each field
-   - Use appropriate subfield codes ($a, $b, $c, etc.)
-   - If any information is not visible on the title page, note it as "[not visible on title page]"
-   - Make reasonable inferences for subject headings based on the title and visible content
-   - Include a 500 note explaining that this record was "Generated from title page image"
-
-5. If you identify any special characteristics (facsimile edition, reprint, translation, etc.), make sure to include appropriate MARC fields and notes.
-
-OUTPUT FORMAT:
-Provide the complete MARC record in a clear, readable format. Start with:
-
-MARC RECORD:
-=LDR  [leader string]
-=008  [fixed field data]
-=020  [ISBN data]
-...
-
-Include all relevant MARC fields in numerical order. After the MARC record, provide a brief "CATALOGER'S NOTES" section with any observations or uncertainties about the bibliographic information.
-
-Be thorough, precise, and follow Library of Congress Rule Interpretations (LCRIs) and MARC 21 standards exactly.`
+func (s *Service) buildMARCPromptForImage() string {
+	return s.buildMARCPrompt("image")
 }
 
 func (s *Service) generateWithOpenAI(imagePath, model string) (string, error) {
@@ -272,7 +253,7 @@ func (s *Service) generateWithOpenAI(imagePath, model string) (string, error) {
 	base64Image := base64.StdEncoding.EncodeToString(imageData)
 
 	// Prepare OpenAI request
-	prompt := s.buildMARCPrompt()
+	prompt := s.buildMARCPromptForImage()
 
 	requestBody := map[string]interface{}{
 		"model": model,

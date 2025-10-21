@@ -13,7 +13,7 @@ import (
 )
 
 func evalIBCmd() {
-	fs := flag.NewFlagSet("eval-ib", flag.ExitOnError)
+	fs := flag.NewFlagSet("ib", flag.ExitOnError)
 
 	// Define flags
 	datasetPath := fs.String("dataset", "./institutional-books-1.0/data/train-00000-of-09831.parquet", "Path to Institutional Books parquet file")
@@ -71,10 +71,8 @@ func evalIBCmd() {
 
 	slog.Info("Dataset loaded", "records", len(records))
 
-	// Initialize cataloging service
 	catalogService := cataloging.NewService()
 
-	// Run evaluation
 	results := make([]metrics.EvaluationResult, 0, len(records))
 
 	for i, record := range records {
@@ -83,20 +81,14 @@ func evalIBCmd() {
 		result := evaluateRecord(record, catalogService, *provider, *model)
 		results = append(results, result)
 
-		// Print progress
 		if (i+1)%10 == 0 {
 			fmt.Printf("Progress: %d/%d records processed\n", i+1, len(records))
 		}
 	}
 
-	// Aggregate results
 	slog.Info("Aggregating results")
 	aggregated := metrics.AggregateEvaluationResults(results, *provider, *model)
-
-	// Print summary
 	aggregated.PrintSummary()
-
-	// Save results
 	slog.Info("Saving results", "json", *outputJSON, "report", *outputReport)
 
 	if err := aggregated.SaveToJSON(*outputJSON); err != nil {
