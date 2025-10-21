@@ -1,6 +1,7 @@
 .PHONY: build deps lint test serve eval-ib
 
 BINARY_NAME=cataloger
+LLM_PROVIDER=openai
 
 deps:
 	go get .
@@ -27,4 +28,4 @@ serve: build
 	./cataloger serve
 
 eval-ib: build
-	./cataloger eval ib --sample 2 --verbose
+	./cataloger eval ib --sample 2 --verbose --provider $(LLM_PROVIDER)

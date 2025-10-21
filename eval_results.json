@@ -1,63 +1,175 @@
 {
-  "TotalRecords": 1,
-  "SuccessCount": 0,
-  "FailureCount": 1,
+  "TotalRecords": 2,
+  "SuccessCount": 2,
+  "FailureCount": 0,
   "TitleAccuracy": {
-    "ExactMatches": 0,
+    "ExactMatches": 2,
     "FuzzyMatches": 0,
     "NoMatches": 0,
     "MissingFields": 0,
-    "AverageScore": 0,
-    "Scores": []
+    "AverageScore": 1,
+    "Scores": [
+      1,
+      1
+    ]
   },
   "AuthorAccuracy": {
-    "ExactMatches": 0,
+    "ExactMatches": 1,
     "FuzzyMatches": 0,
-    "NoMatches": 0,
+    "NoMatches": 1,
     "MissingFields": 0,
-    "AverageScore": 0,
-    "Scores": []
+    "AverageScore": 0.6875,
+    "Scores": [
+      0.375,
+      1
+    ]
   },
   "DateAccuracy": {
-    "ExactMatches": 0,
+    "ExactMatches": 2,
     "FuzzyMatches": 0,
     "NoMatches": 0,
     "MissingFields": 0,
-    "AverageScore": 0,
-    "Scores": []
+    "AverageScore": 1,
+    "Scores": [
+      1,
+      1
+    ]
   },
   "ISBNAccuracy": {
     "ExactMatches": 0,
     "FuzzyMatches": 0,
     "NoMatches": 0,
-    "MissingFields": 0,
-    "AverageScore": 0,
-    "Scores": []
+    "MissingFields": 2,
+    "AverageScore": 0.5,
+    "Scores": [
+      0.5,
+      0.5
+    ]
   },
   "SubjectAccuracy": {
     "ExactMatches": 0,
-    "FuzzyMatches": 0,
-    "NoMatches": 0,
+    "FuzzyMatches": 1,
+    "NoMatches": 1,
     "MissingFields": 0,
-    "AverageScore": 0,
-    "Scores": []
+    "AverageScore": 0.42380952380952386,
+    "Scores": [
+      0.047619047619047616,
+      0.8
+    ]
   },
-  "OverallAccuracy": 0,
-  "AverageProcessingTime": 0,
-  "TotalProcessingTime": 30002979583,
+  "OverallAccuracy": 0.7986309523809524,
+  "AverageProcessingTime": 14822439333,
+  "TotalProcessingTime": 29644878667,
   "Results": [
     {
       "Barcode": "32044000000018",
       "Title": "Geology of Massachusetts and Rhode Island.",
       "Author": "Emerson, Benjamin Kendall",
-      "GeneratedMARC": "",
-      "Comparison": null,
-      "ProcessingTime": 30002979583,
-      "Error": "MARC generation failed: failed to call Ollama API for OCR-based MARC: Post \"https://isle-microservices.cc.lehigh.edu/ollama/api/generate\": dial tcp 128.180.2.28:443: i/o timeout"
+      "GeneratedMARC": "MARC RECORD:\n```\n=LDR  00000nam a2200000 a 4500\n=008  231023s1917    dcuab    b    f000 0 eng  \n=020  ##$a[not available in OCR]\n=100  1#$aEmerson, B. K.$q(Benjamin Kendall),$d1843-1932.\n=245  10$aGeology of Massachusetts and Rhode Island /$cby B. K. Emerson.\n=260  ##$aWashington :$bGovernment Printing Office,$c1917.\n=300  ##$a[to be determined] p. :$bill., maps ;$c23 cm.\n=490  1#$aBulletin / United States Geological Survey ;$v597\n=500  ##$aGenerated from OCR text of title page.\n=610  10$aMassachusetts.$bGeological Survey.\n=610  10$aRhode Island.$bGeological Survey.\n=650  #0$aGeology$zMassachusetts.\n=650  #0$aGeology$zRhode Island.\n=710  1#$aUnited States.$bDepartment of the Interior.\n=710  2#$aGeological Survey (U.S.)\n=830  #0$aBulletin (Geological Survey (U.S.)) ;$v597.\n```\n\nCATALOGER'S NOTES:\n- The OCR text did not provide an ISBN, so it is noted as \"[not available in OCR]\".\n- The physical description (pagination) is marked as \"to be determined\" due to lack of specific information in the OCR text.\n- The series statement is inferred from the text \"Bulletin 597\" and matched with the United States Geological Survey series.\n- Subject headings are based on the title and inferred content related to geological surveys of Massachusetts and Rhode Island.\n- The main entry is under the author B. K. Emerson, with additional entries for the United States Department of the Interior and the Geological Survey.\n- The publication date is clearly stated as 1917.\n- The record includes a 500 note indicating it was generated from OCR text.",
+      "Comparison": {
+        "TitleMatch": {
+          "Expected": "Geology of Massachusetts and Rhode Island.",
+          "Actual": "Geology of Massachusetts and Rhode Island",
+          "Score": 1,
+          "Method": "exact",
+          "Notes": "Exact match"
+        },
+        "AuthorMatch": {
+          "Expected": "Emerson, Benjamin Kendall",
+          "Actual": "Emerson, B. K.",
+          "Score": 0.375,
+          "Method": "no_match",
+          "Notes": "Low similarity (0.38)"
+        },
+        "DateMatch": {
+          "Expected": "1917",
+          "Actual": "1917.",
+          "Score": 1,
+          "Method": "exact",
+          "Notes": "Exact match"
+        },
+        "ISBNMatch": {
+          "Expected": "",
+          "Actual": "",
+          "Score": 0.5,
+          "Method": "both_missing",
+          "Notes": "Both fields are empty"
+        },
+        "SubjectMatch": {
+          "Expected": "Geology, Rocks, Sedimentary, Rocks, Igneous",
+          "Actual": "Massachusetts.; Rhode Island.; Geology; Geology",
+          "Score": 0.047619047619047616,
+          "Method": "no_match",
+          "Notes": "Low similarity (0.05)"
+        },
+        "FieldLevelScores": {
+          "author": 0.375,
+          "date": 1,
+          "isbn": 0.5,
+          "subject": 0.047619047619047616,
+          "title": 1
+        },
+        "OverallScore": 0.6672619047619048
+      },
+      "ProcessingTime": 8196015667,
+      "Error": ""
+    },
+    {
+      "Barcode": "32044000028530",
+      "Title": "A history of Japanese mathematics",
+      "Author": "Smith, David Eugene",
+      "GeneratedMARC": "MARC RECORD:\n```\n=LDR  01482cam a2200301 i 4500\n=008  231025s1914    ilu           000 0 eng  \n=020  ##$a[not available in OCR]\n=100  1#$aSmith, David Eugene,$d1860-1944,$eauthor.\n=245  12$aA history of Japanese mathematics /$cby David Eugene Smith and Yoshio Mikami.\n=260  ##$aChicago :$bThe Open Court Publishing Company,$c1914.\n=300  ##$a[to be determined] pages ;$c[not available in OCR] cm.\n=500  ##$aGenerated from OCR text of title page.\n=500  ##$aPrinted by W. Drugulin, Leipzig.\n=700  1#$aMikami, Yoshio,$d1875-1950,$eauthor.\n=650  #0$aMathematics, Japanese$xHistory.\n=650  #0$aMathematics$xJapan$xHistory.\n=710  2#$aOpen Court Publishing Company,$epublisher.\n```\n\nCATALOGER'S NOTES:\n- The ISBN is not available in the OCR text provided.\n- The physical description (pagination and dimensions) is not available in the OCR text and is marked as \"to be determined.\"\n- The publication location is inferred as Chicago based on the publisher's name.\n- Subject headings are inferred based on the title and content of the book.\n- The record includes a note about the printing location in Leipzig, which is relevant for historical context.\n- The series information, if any, is not available in the OCR text.\n- The OCR text did not provide specific details about the edition, so no edition statement is included.\n- The record was generated based on the information available from the OCR text, and any missing details are noted accordingly.",
+      "Comparison": {
+        "TitleMatch": {
+          "Expected": "A history of Japanese mathematics",
+          "Actual": "A history of Japanese mathematics",
+          "Score": 1,
+          "Method": "exact",
+          "Notes": "Exact match"
+        },
+        "AuthorMatch": {
+          "Expected": "Smith, David Eugene",
+          "Actual": "Smith, David Eugene,",
+          "Score": 1,
+          "Method": "exact",
+          "Notes": "Exact match"
+        },
+        "DateMatch": {
+          "Expected": "1914",
+          "Actual": "1914.",
+          "Score": 1,
+          "Method": "exact",
+          "Notes": "Exact match"
+        },
+        "ISBNMatch": {
+          "Expected": "",
+          "Actual": "",
+          "Score": 0.5,
+          "Method": "both_missing",
+          "Notes": "Both fields are empty"
+        },
+        "SubjectMatch": {
+          "Expected": "Mathematics, Japanese",
+          "Actual": "Mathematics, Japanese; Mathematics",
+          "Score": 0.8,
+          "Method": "substring",
+          "Notes": "Partial match (substring found)"
+        },
+        "FieldLevelScores": {
+          "author": 1,
+          "date": 1,
+          "isbn": 0.5,
+          "subject": 0.8,
+          "title": 1
+        },
+        "OverallScore": 0.9299999999999999
+      },
+      "ProcessingTime": 21448863000,
+      "Error": ""
     }
   ],
-  "EvaluationDate": "2025-10-20T13:03:58.982563-04:00",
-  "Provider": "ollama",
+  "EvaluationDate": "2025-10-21T08:45:26.205418-04:00",
+  "Provider": "openai",
   "Model": "",
-  "SampleSize": 1
+  "SampleSize": 2
 }

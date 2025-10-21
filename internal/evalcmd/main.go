@@ -32,8 +32,8 @@ func Run() {
 		runCmd()
 	case "report":
 		reportCmd()
-	case "eval-ib":
-		evalIBCmd()
+	case "ib":
+		ibCmd()
 	case "inspect":
 		inspectCmd()
 	case "version":
@@ -86,7 +86,7 @@ Usage:
   eval enrich [options]   Enrich dataset with images and MARCXML for each ISBN
   eval run [options]      Run evaluation on dataset
   eval report [options]   Generate detailed comparison report
-  eval eval-ib [options]  Evaluate using Institutional Books 1.0 dataset
+  eval ib [options]       Evaluate using Institutional Books 1.0 dataset
   eval inspect [options]  Inspect dataset records (useful for examining OCR text)
   eval version            Print version
   eval help               Show this help
@@ -102,7 +102,7 @@ Examples:
   eval run --dataset ./eval_data --provider ollama --model mistral-small3.2:24b
 
   # Evaluate with Institutional Books dataset
-  eval eval-ib --dataset ./institutional-books-1.0/data/train-00000-of-09831.parquet --sample 10
+  eval ib --dataset ./institutional-books-1.0/data/train-00000-of-09831.parquet --sample 10
 
   # Inspect dataset to see OCR text and metadata
   eval inspect --dataset ./institutional-books-1.0/data/train-00000-of-09831.parquet --limit 5 --interactive
