@@ -2,9 +2,12 @@ package evalcmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/lehigh-university-libraries/cataloger/internal/eval/dataset"
 	"github.com/spf13/cobra"
@@ -37,7 +40,12 @@ appropriate character/page limits for sending to LLMs.`,
 			if datasetPath == "" {
 				return fmt.Errorf("--dataset is required")
 			}
-			return executeInspect(datasetPath, limit, interactive, showOCR, showMetadata)
+
+			// Create a context that gets canceled on an interrupt signal (Ctrl+C)
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer stop() // Ensure the signal handler is cleaned up
+
+			return executeInspect(ctx, datasetPath, limit, interactive, showOCR, showMetadata)
 		},
 	}
 
@@ -52,12 +60,14 @@ appropriate character/page limits for sending to LLMs.`,
 	return cmd
 }
 
-func executeInspect(datasetPath string, limit int, interactive, showOCR, showMetadata bool) error {
+func executeInspect(ctx context.Context, datasetPath string, limit int, interactive, showOCR, showMetadata bool) error {
 	loader := dataset.NewLoader(datasetPath)
 
 	var records []dataset.InstitutionalBooksRecord
 	var err error
 
+	// Note: Loading itself doesn't respect context here, but we'll assume it's fast.
+	// A more complex implementation would involve passing context to the Loader.
 	if limit > 0 {
 		records, err = loader.LoadSample(limit)
 	} else {
@@ -75,16 +85,58 @@ func executeInspect(datasetPath string, limit int, interactive, showOCR, showMet
 	reader := bufio.NewReader(os.Stdin)
 
 	for i, record := range records {
+		// Check for context cancellation (e.g., Ctrl+C) at the start of each iteration
+		select {
+		case <-ctx.Done():
+			fmt.Println("\nInspection interrupted.")
+			return nil // Return nil for a clean exit
+		default:
+			// Continue processing the record
+		}
+
 		fmt.Printf("RECORD %d/%d\n", i+1, len(records))
 		fmt.Println(strings.Repeat("-", 80))
 
 		if showMetadata {
-			fmt.Printf("Barcode:       %s\n", record.BarcodeSource)
-			fmt.Printf("Title:         %s\n", record.TitleSource)
-			fmt.Printf("Author:        %s\n", record.AuthorSource)
-			fmt.Printf("Date:          %s\n", record.GetPrimaryDate())
-			fmt.Printf("ISBN:          %s\n", record.GetISBN())
-			fmt.Printf("Pages:         %d\n", len(record.TextByPageSource))
+			// Core identifiers
+			fmt.Printf("Barcode:        %s\n", record.BarcodeSource)
+
+			// Bibliographic metadata
+			fmt.Printf("Title:          %s\n", record.TitleSource)
+			fmt.Printf("Author:         %s\n", record.AuthorSource)
+			fmt.Printf("Date1:          %s\n", record.Date1Source)
+			fmt.Printf("Date2:          %s\n", record.Date2Source)
+			fmt.Printf("Date Types:     %s\n", record.DateTypesSource)
+
+			// Additional metadata
+			fmt.Printf("Language:       %s\n", record.LanguageSource)
+			fmt.Printf("Topic/Subject: %s\n", record.TopicOrSubjectSource)
+			fmt.Printf("Genre/Form:     %s\n", record.GenreOrFormSource)
+			fmt.Printf("General Note:   %s\n", record.GeneralNoteSource)
+
+			// Identifiers
+			if len(record.IdentifiersSource.ISBN) > 0 {
+				fmt.Printf("ISBN(s):        %s\n", strings.Join(record.IdentifiersSource.ISBN, ", "))
+			}
+			if len(record.IdentifiersSource.LCCN) > 0 {
+				fmt.Printf("LCCN(s):        %s\n", strings.Join(record.IdentifiersSource.LCCN, ", "))
+			}
+			if len(record.IdentifiersSource.OCLC) > 0 {
+				fmt.Printf("OCLC(s):        %s\n", strings.Join(record.IdentifiersSource.OCLC, ", "))
+			}
+
+			// HathiTrust data
+			if record.HathitrustDataExt.URL != "" {
+				fmt.Printf("HathiTrust URL: %s\n", record.HathitrustDataExt.URL)
+				fmt.Printf("Rights Code:    %s\n", record.HathitrustDataExt.RightsCode)
+				fmt.Printf("Reason Code:    %s\n", record.HathitrustDataExt.ReasonCode)
+				fmt.Printf("Last Check:     %s\n", record.HathitrustDataExt.LastCheck)
+			}
+
+			// Statistics
+			fmt.Printf("Page Count:     %d\n", record.PageCountSource)
+			fmt.Printf("Token Count:    %d\n", record.TokenCountGen)
+			fmt.Printf("Pages w/ OCR:   %d\n", len(record.TextByPageSource))
 			fmt.Println()
 		}
 
@@ -94,19 +146,20 @@ func executeInspect(datasetPath string, limit int, interactive, showOCR, showMet
 			fmt.Printf("OCR Text Length: %d words (approx)\n", len(strings.Fields(ocrText)))
 			fmt.Println()
 
-			// Show first 2000 characters with indicator if truncated
+			// Show first 500 characters with indicator if truncated
 			displayText := ocrText
 			truncated := false
-			if len(displayText) > 2000 {
-				displayText = displayText[:2000]
+			maxChars := 500
+			if len(displayText) > maxChars {
+				displayText = displayText[:maxChars]
 				truncated = true
 			}
 
-			fmt.Println("OCR TEXT (first 10 pages):")
+			fmt.Println("OCR TEXT PREVIEW (first 10 pages):")
 			fmt.Println(strings.Repeat("-", 80))
 			fmt.Println(displayText)
 			if truncated {
-				fmt.Printf("\n[... truncated, showing first 2000 of %d characters ...]\n", len(ocrText))
+				fmt.Printf("\n[... truncated, showing first %d of %d characters ...]\n", maxChars, len(ocrText))
 			}
 			fmt.Println(strings.Repeat("-", 80))
 		}
@@ -115,8 +168,25 @@ func executeInspect(datasetPath string, limit int, interactive, showOCR, showMet
 
 		if interactive {
 			fmt.Print("Press Enter to continue to next record (or Ctrl+C to quit)...")
-			_, _ = reader.ReadString('\n')
-			fmt.Println()
+
+			// Channel to signal user input
+			inputCh := make(chan struct{})
+			// Goroutine to wait for Enter key
+			go func() {
+				_, _ = reader.ReadString('\n')
+				close(inputCh)
+			}()
+
+			// Wait for either user input (Enter) or context cancellation (Ctrl+C)
+			select {
+			case <-ctx.Done():
+				// Context was canceled
+				fmt.Println("\nInspection interrupted.")
+				return nil // Clean exit
+			case <-inputCh:
+				// User pressed Enter
+				fmt.Println()
+			}
 		} else {
 			fmt.Println()
 		}

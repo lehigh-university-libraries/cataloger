@@ -1,4 +1,4 @@
-.PHONY: build deps lint test serve eval-ib
+.PHONY: build deps lint test serve eval-ib inspect
 
 BINARY_NAME=cataloger
 LLM_PROVIDER=openai
@@ -28,3 +28,7 @@ serve: build
 
 eval-ib: build
 	./cataloger eval ib --sample 2 --verbose --provider $(LLM_PROVIDER)
+
+inspect: build
+	./cataloger eval inspect --dataset ./institutional-books-1.0/data/train-00000-of-09831.parquet --limit 5 --interactive
+

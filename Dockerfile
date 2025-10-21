@@ -4,14 +4,13 @@ WORKDIR /app
 
 RUN adduser -S -G nobody -u 8888 cataloger
 
-COPY --chown=cataloger:cataloger main.go go.* docker-entrypoint.sh ./
-COPY --chown=cataloger:cataloger internal/ ./internal/
+COPY --chown=cataloger:nobody main.go go.* docker-entrypoint.sh ./
+COPY --chown=cataloger:nobody internal/ ./internal/
+COPY --chown=cataloger:nobody cmd/ ./cmd/
 
 RUN go mod download && \
   go build -o /app/cataloger && \
   go clean -cache -modcache
-
-COPY --chown=cataloger:cataloger static/ ./static/
 
 RUN mkdir uploads cache && \
   chown -R cataloger uploads cache
