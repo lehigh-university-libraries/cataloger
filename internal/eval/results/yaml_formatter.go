@@ -76,7 +76,7 @@ func SaveToYAML(provider, model, datasetPath string, sampleSize int, results []m
 			Identifier:       r.Barcode,
 			Title:            r.Title,
 			Author:           r.Author,
-			ProviderResponse: r.GeneratedMARC,
+			ProviderResponse: r.GeneratedMetadata,
 			ReferenceMARC:    r.ReferenceMARC,
 		}
 

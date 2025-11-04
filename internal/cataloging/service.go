@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 )
 
 type Service struct{}
@@ -41,8 +42,8 @@ func (s *Service) GenerateMARCFromImage(imagePath, provider, model string) (stri
 	}
 }
 
-// GenerateMARCFromOCR generates a MARC record from OCR text extracted from a title page
-func (s *Service) GenerateMARCFromOCR(ocrText, provider, model string) (string, error) {
+// ExtractMetadataFromOCR extracts bibliographic metadata from OCR text
+func (s *Service) ExtractMetadataFromOCR(ocrText, provider, model string) (string, error) {
 	// Set defaults if not provided
 	if provider == "" {
 		provider = os.Getenv("CATALOGING_PROVIDER")
@@ -57,9 +58,9 @@ func (s *Service) GenerateMARCFromOCR(ocrText, provider, model string) (string, 
 
 	switch provider {
 	case "openai":
-		return s.generateFromOCRWithOpenAI(ocrText, model)
+		return s.extractMetadataWithOpenAI(ocrText, model)
 	case "ollama":
-		return s.generateFromOCRWithOllama(ocrText, model)
+		return s.extractMetadataWithOllama(ocrText, model)
 	default:
 		return "", fmt.Errorf("unsupported provider: %s", provider)
 	}
@@ -144,8 +145,10 @@ func (s *Service) generateWithOllama(imagePath, model string) (string, error) {
 		return "", fmt.Errorf("failed to decode Ollama response: %w", err)
 	}
 
-	slog.Info("Generated MARC record", "length", len(ollamaResp.Response))
-	return ollamaResp.Response, nil
+	rawResponse := ollamaResp.Response
+	marcRecord := s.extractMARCFromResponse(rawResponse)
+	slog.Info("Generated MARC record", "length", len(marcRecord))
+	return marcRecord, nil
 }
 
 // buildMARCPrompt generates a MARC cataloging prompt based on the source type
@@ -211,15 +214,16 @@ INSTRUCTIONS:
 5. If you identify any special characteristics (facsimile edition, reprint, translation, etc.), make sure to include appropriate MARC fields and notes.
 
 OUTPUT FORMAT:
-Provide the complete MARC record in a clear, readable format. Start with:
+Respond with ONLY a JSON object in the following format:
 
-MARC RECORD:
-=LDR  [leader string]
-=008  [fixed field data]
-=020  [ISBN data]
-...
+{
+  "marc": "=LDR  [leader string]\n=008  [fixed field data]\n=020  [ISBN data]\n...",
+  "notes": "Brief cataloger's notes with any observations or uncertainties"
+}
 
-Include all relevant MARC fields in numerical order. After the MARC record, provide a brief "CATALOGER'S NOTES" section with any observations or uncertainties about the bibliographic information.
+The "marc" field should contain the complete MARC record with each field on a new line (using \n), in numerical order, using the format =TAG  INDICATORS$SUBFIELDS.
+
+The "notes" field should contain a brief summary of any observations, uncertainties, or special characteristics identified during cataloging.
 
 Be thorough, precise, and follow Library of Congress Rule Interpretations (LCRIs) and MARC 21 standards exactly.`,
 		map[string]string{"ocr": "OCR text", "image": "image provided"}[sourceType],
@@ -230,12 +234,76 @@ Be thorough, precise, and follow Library of Congress Rule Interpretations (LCRIs
 	)
 }
 
-func (s *Service) buildMARCPromptForOCR() string {
-	return s.buildMARCPrompt("ocr")
-}
-
 func (s *Service) buildMARCPromptForImage() string {
 	return s.buildMARCPrompt("image")
+}
+
+// extractMARCFromResponse parses the JSON response and extracts the MARC record
+// Falls back to returning the full response if JSON parsing fails
+func (s *Service) extractMARCFromResponse(response string) string {
+	// Try to parse as JSON
+	var result struct {
+		MARC  string `json:"marc"`
+		Notes string `json:"notes"`
+	}
+
+	// Trim any markdown code blocks
+	response = strings.TrimSpace(response)
+	response = strings.TrimPrefix(response, "```json")
+	response = strings.TrimPrefix(response, "```")
+	response = strings.TrimSuffix(response, "```")
+	response = strings.TrimSpace(response)
+
+	if err := json.Unmarshal([]byte(response), &result); err != nil {
+		slog.Warn("Failed to parse JSON response, using raw output", "error", err)
+		// Fallback: try to extract MARC record section from non-JSON response
+		return extractMARCFromPlainText(response)
+	}
+
+	// Successfully parsed JSON
+	if result.MARC == "" {
+		slog.Warn("JSON parsed but MARC field is empty, using raw output")
+		return response
+	}
+
+	slog.Debug("Successfully extracted MARC from JSON response", "notes", result.Notes)
+	return result.MARC
+}
+
+// extractMARCFromPlainText attempts to extract MARC from plain text response
+// This is a fallback for when the LLM doesn't return proper JSON
+func extractMARCFromPlainText(response string) string {
+	// Look for "MARC RECORD:" section
+	if idx := strings.Index(response, "MARC RECORD:"); idx != -1 {
+		response = response[idx+len("MARC RECORD:"):]
+	}
+
+	// Look for "=LDR" or "=001" as start of MARC
+	lines := strings.Split(response, "\n")
+	var marcLines []string
+	inMARC := false
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		// Start collecting when we see a MARC field
+		if strings.HasPrefix(line, "=") || (inMARC && len(line) > 0) {
+			inMARC = true
+			marcLines = append(marcLines, line)
+		}
+		// Stop if we hit a section marker like "CATALOGER'S NOTES" or "Notes:"
+		if inMARC && (strings.HasPrefix(strings.ToUpper(line), "CATALOGER") ||
+			strings.HasPrefix(strings.ToUpper(line), "NOTES:") ||
+			strings.HasPrefix(line, "---")) {
+			break
+		}
+	}
+
+	if len(marcLines) > 0 {
+		return strings.Join(marcLines, "\n")
+	}
+
+	// Last resort: return the whole response
+	return response
 }
 
 func (s *Service) generateWithOpenAI(imagePath, model string) (string, error) {
@@ -321,13 +389,58 @@ func (s *Service) generateWithOpenAI(imagePath, model string) (string, error) {
 		return "", fmt.Errorf("no response from OpenAI")
 	}
 
-	marcRecord := openaiResp.Choices[0].Message.Content
+	rawResponse := openaiResp.Choices[0].Message.Content
+	marcRecord := s.extractMARCFromResponse(rawResponse)
 	slog.Info("Generated MARC record", "provider", "openai", "model", model, "length", len(marcRecord))
 	return marcRecord, nil
 }
 
-// generateFromOCRWithOllama generates MARC from OCR text using Ollama
-func (s *Service) generateFromOCRWithOllama(ocrText, model string) (string, error) {
+// buildMetadataExtractionPrompt creates a prompt for extracting bibliographic metadata
+func (s *Service) buildMetadataExtractionPrompt() string {
+	return `You are an expert bibliographic metadata cataloger. Extract structured metadata from the OCR text of a book title page.
+
+INSTRUCTIONS:
+1. Carefully analyze ALL information in the OCR text
+2. Extract the following bibliographic fields:
+   - title: Full title of the work (include subtitle if present)
+   - author: Primary author(s) name(s)
+   - publisher: Publisher name
+   - publication_date: Year of publication
+   - publication_city: City where published
+   - edition: Edition statement (if present, e.g., "2nd ed.", "Rev. ed.")
+   - isbn: ISBN numbers (array, if present)
+   - language: Primary language of the work (ISO 639-3 code if possible, or full name)
+   - subject: Main subject or topic
+   - genre: Genre or form (e.g., "Fiction", "Biography", "Reference")
+   - series: Series information (if part of a series)
+
+3. For missing fields, use empty string "" or empty array [] for ISBN
+4. Be precise and extract exactly what is shown in the OCR text
+5. Do not invent or infer information that isn't present
+
+OUTPUT FORMAT:
+Respond with ONLY a JSON object:
+
+{
+  "title": "...",
+  "author": "...",
+  "publisher": "...",
+  "publication_date": "...",
+  "publication_city": "...",
+  "edition": "...",
+  "isbn": ["..."],
+  "language": "...",
+  "subject": "...",
+  "genre": "...",
+  "series": "...",
+  "notes": "Any observations or uncertainties"
+}
+
+Be thorough and accurate. Extract only what is clearly present in the OCR text.`
+}
+
+// extractMetadataWithOllama extracts metadata using Ollama
+func (s *Service) extractMetadataWithOllama(ocrText, model string) (string, error) {
 	ollamaHost := os.Getenv("OLLAMA_URL")
 	if ollamaHost == "" {
 		ollamaHost = os.Getenv("OLLAMA_HOST")
@@ -336,9 +449,8 @@ func (s *Service) generateFromOCRWithOllama(ocrText, model string) (string, erro
 		ollamaHost = "http://localhost:11434"
 	}
 
-	// Prepare Ollama request with OCR text
-	systemPrompt := s.buildMARCPromptForOCR()
-	userPrompt := fmt.Sprintf("Here is the OCR text extracted from a book title page:\n\n%s\n\nPlease generate a MARC 21 record based on this text.", ocrText)
+	systemPrompt := s.buildMetadataExtractionPrompt()
+	userPrompt := fmt.Sprintf("Here is the OCR text from a book title page:\n\n%s\n\nExtract the bibliographic metadata as JSON.", ocrText)
 
 	requestBody := map[string]interface{}{
 		"model":  model,
@@ -347,21 +459,21 @@ func (s *Service) generateFromOCRWithOllama(ocrText, model string) (string, erro
 		"options": map[string]interface{}{
 			"temperature": 0.1,
 		},
+		"format": "json", // Request JSON format
 	}
 
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal OCR request: %w", err)
+		return "", fmt.Errorf("failed to marshal metadata request: %w", err)
 	}
 
-	// Call Ollama API
 	resp, err := http.Post(
 		ollamaHost+"/api/generate",
 		"application/json",
 		bytes.NewBuffer(jsonData),
 	)
 	if err != nil {
-		return "", fmt.Errorf("failed to call Ollama API for OCR-based MARC: %w", err)
+		return "", fmt.Errorf("failed to call Ollama API: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -370,29 +482,27 @@ func (s *Service) generateFromOCRWithOllama(ocrText, model string) (string, erro
 		return "", fmt.Errorf("ollama API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Parse response
 	var ollamaResp struct {
 		Response string `json:"response"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
-		return "", fmt.Errorf("failed to decode Ollama OCR-based response: %w", err)
+		return "", fmt.Errorf("failed to decode Ollama response: %w", err)
 	}
 
-	slog.Info("Generated MARC record from OCR", "provider", "ollama", "length", len(ollamaResp.Response))
+	slog.Info("Extracted metadata", "provider", "ollama", "length", len(ollamaResp.Response))
 	return ollamaResp.Response, nil
 }
 
-// generateFromOCRWithOpenAI generates MARC from OCR text using OpenAI
-func (s *Service) generateFromOCRWithOpenAI(ocrText, model string) (string, error) {
+// extractMetadataWithOpenAI extracts metadata using OpenAI
+func (s *Service) extractMetadataWithOpenAI(ocrText, model string) (string, error) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
 		return "", fmt.Errorf("OPENAI_API_KEY not set")
 	}
 
-	// Prepare OpenAI request with OCR text
-	systemPrompt := s.buildMARCPromptForOCR()
-	userPrompt := fmt.Sprintf("Here is the OCR text extracted from a book title page:\n\n%s\n\nPlease generate a MARC 21 record based on this text.", ocrText)
+	systemPrompt := s.buildMetadataExtractionPrompt()
+	userPrompt := fmt.Sprintf("Here is the OCR text from a book title page:\n\n%s\n\nExtract the bibliographic metadata as JSON.", ocrText)
 
 	requestBody := map[string]interface{}{
 		"model": model,
@@ -406,19 +516,19 @@ func (s *Service) generateFromOCRWithOpenAI(ocrText, model string) (string, erro
 				"content": userPrompt,
 			},
 		},
-		"max_tokens":  4000,
-		"temperature": 0.1,
+		"max_tokens":    1000,
+		"temperature":   0.1,
+		"response_format": map[string]string{"type": "json_object"}, // Request JSON format
 	}
 
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal OCR request: %w", err)
+		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Call OpenAI API
 	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonData))
 	if err != nil {
-		return "", fmt.Errorf("failed to create OCR request: %w", err)
+		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -427,7 +537,7 @@ func (s *Service) generateFromOCRWithOpenAI(ocrText, model string) (string, erro
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to call OpenAI API for OCR-based MARC: %w", err)
+		return "", fmt.Errorf("failed to call OpenAI API: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -436,7 +546,6 @@ func (s *Service) generateFromOCRWithOpenAI(ocrText, model string) (string, erro
 		return "", fmt.Errorf("openAI API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Parse response
 	var openaiResp struct {
 		Choices []struct {
 			Message struct {
@@ -446,14 +555,14 @@ func (s *Service) generateFromOCRWithOpenAI(ocrText, model string) (string, erro
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&openaiResp); err != nil {
-		return "", fmt.Errorf("failed to decode OpenAI OCR-based response: %w", err)
+		return "", fmt.Errorf("failed to decode OpenAI response: %w", err)
 	}
 
 	if len(openaiResp.Choices) == 0 {
 		return "", fmt.Errorf("no response from OpenAI")
 	}
 
-	marcRecord := openaiResp.Choices[0].Message.Content
-	slog.Info("Generated MARC record from OCR", "provider", "openai", "model", model, "length", len(marcRecord))
-	return marcRecord, nil
+	metadataJSON := openaiResp.Choices[0].Message.Content
+	slog.Info("Extracted metadata", "provider", "openai", "model", model, "length", len(metadataJSON))
+	return metadataJSON, nil
 }
