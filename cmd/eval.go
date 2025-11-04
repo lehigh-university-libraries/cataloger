@@ -23,6 +23,7 @@ comparison reports.`,
 	cmd.AddCommand(evalcmd.NewReportCmd())
 	cmd.AddCommand(evalcmd.NewIBCmd())
 	cmd.AddCommand(evalcmd.NewInspectCmd())
+	cmd.AddCommand(evalcmd.NewDownloadImagesCmd())
 
 	return cmd
 }

@@ -378,7 +378,121 @@ func (f *Fetcher) downloadGoogleBooksPages(isbn string, imageSet *ImageSet, outp
 	return nil
 }
 
-// CleanISBN removes hyphens and normalizes ISBN
+// CleanISBN removes hyphens, parenthetical text, and normalizes ISBN
 func CleanISBN(isbn string) string {
-	return strings.ReplaceAll(strings.TrimSpace(isbn), "-", "")
+	// Trim whitespace
+	isbn = strings.TrimSpace(isbn)
+
+	// Remove everything after first space or opening parenthesis
+	// ISBNs in dataset often have text like "0123456789 (microfiche)" or "0123456789 :"
+	if idx := strings.IndexAny(isbn, " ("); idx != -1 {
+		isbn = isbn[:idx]
+	}
+
+	// Remove hyphens
+	isbn = strings.ReplaceAll(isbn, "-", "")
+
+	// Remove trailing punctuation (colons, periods, commas)
+	isbn = strings.TrimRight(isbn, ":.,;")
+
+	return isbn
+}
+
+// DownloadGoogleBooksPages downloads the first N pages from Google Books for a given ISBN
+// Returns the number of pages successfully downloaded
+func DownloadGoogleBooksPages(f *Fetcher, isbn string, outputDir string, numPages int) (int, error) {
+	slog.Info("Downloading Google Books pages", "isbn", isbn, "pages", numPages)
+
+	// Step 1: Get volume ID from Google Books API
+	url := fmt.Sprintf("https://www.googleapis.com/books/v1/volumes?q=isbn:%s", isbn)
+
+	resp, err := f.HTTPClient.Get(url)
+	if err != nil {
+		return 0, fmt.Errorf("failed to query Google Books API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("google Books API returned status %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Items []struct {
+			ID         string `json:"id"`
+			VolumeInfo struct {
+				Title string `json:"title"`
+			} `json:"volumeInfo"`
+			AccessInfo struct {
+				Viewability string `json:"viewability"`
+			} `json:"accessInfo"`
+		} `json:"items"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("failed to decode Google Books response: %w", err)
+	}
+
+	if len(result.Items) == 0 {
+		return 0, fmt.Errorf("no books found in Google Books for ISBN %s", isbn)
+	}
+
+	volumeID := result.Items[0].ID
+	viewability := result.Items[0].AccessInfo.Viewability
+
+	// Only proceed if the book has some preview available
+	if viewability == "NO_PAGES" {
+		return 0, fmt.Errorf("no preview pages available in Google Books for ISBN %s", isbn)
+	}
+
+	slog.Info("Found Google Books volume", "isbn", isbn, "volume_id", volumeID, "viewability", viewability)
+
+	// Step 2: Download pages
+	// Google Books uses page IDs like "PA1", "PA2", "PP1", "PP2" etc.
+	// PA = Page numbers, PP = Front matter (typically roman numerals)
+	// We'll try both prefixes for comprehensive coverage
+
+	pagesDownloaded := 0
+	pageAttempts := []string{}
+
+	// Generate page attempts: PP1-PP10, PA1-PA20
+	for i := 1; i <= 10; i++ {
+		pageAttempts = append(pageAttempts, fmt.Sprintf("PP%d", i))
+	}
+	for i := 1; i <= 20; i++ {
+		pageAttempts = append(pageAttempts, fmt.Sprintf("PA%d", i))
+	}
+
+	// Try to download the first N pages that are available
+	for _, pageID := range pageAttempts {
+		if pagesDownloaded >= numPages {
+			break
+		}
+
+		// Construct Google Books page image URL
+		// zoom=1 gives us high-quality images, w=1280 sets max width
+		pageURL := fmt.Sprintf("https://books.google.com/books/content?id=%s&pg=%s&img=1&zoom=1&hl=en&w=1280", volumeID, pageID)
+
+		// Output path for this page
+		outputPath := filepath.Join(outputDir, fmt.Sprintf("page_%d.jpg", pagesDownloaded+1))
+
+		slog.Debug("Attempting to download page", "isbn", isbn, "page_id", pageID, "output", outputPath)
+
+		// Try to download the page
+		if err := f.downloadImage(pageURL, outputPath); err == nil {
+			pagesDownloaded++
+			slog.Debug("Successfully downloaded page", "isbn", isbn, "page_id", pageID, "count", pagesDownloaded)
+		} else {
+			slog.Debug("Failed to download page", "isbn", isbn, "page_id", pageID, "error", err)
+		}
+
+		// Rate limiting - be respectful to Google Books
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	if pagesDownloaded == 0 {
+		return 0, fmt.Errorf("failed to download any pages from Google Books for ISBN %s", isbn)
+	}
+
+	slog.Info("Downloaded pages from Google Books", "isbn", isbn, "pages", pagesDownloaded)
+	return pagesDownloaded, nil
 }

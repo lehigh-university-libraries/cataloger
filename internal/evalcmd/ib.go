@@ -8,7 +8,9 @@ import (
 
 	"github.com/lehigh-university-libraries/cataloger/internal/cataloging"
 	"github.com/lehigh-university-libraries/cataloger/internal/eval/dataset"
+	"github.com/lehigh-university-libraries/cataloger/internal/eval/marcgen"
 	"github.com/lehigh-university-libraries/cataloger/internal/eval/metrics"
+	resultsutil "github.com/lehigh-university-libraries/cataloger/internal/eval/results"
 )
 
 func executeIB(datasetPath, outputJSON, outputReport string, sampleSize int, provider, model string, verbose bool) error {
@@ -87,6 +89,11 @@ func executeIB(datasetPath, outputJSON, outputReport string, sampleSize int, pro
 		fmt.Printf("Detailed report saved to: %s\n", outputReport)
 	}
 
+	// Save results in YAML format (HTR-style)
+	if err := resultsutil.SaveToYAML(provider, model, datasetPath, sampleSize, aggregated.Results); err != nil {
+		fmt.Printf("Warning: Failed to save YAML results: %v\n", err)
+	}
+
 	slog.Info("Evaluation complete")
 	return nil
 }
@@ -101,6 +108,12 @@ func evaluateRecord(record dataset.InstitutionalBooksRecord, service *cataloging
 		Author:  record.AuthorSource,
 	}
 
+	// Generate reference MARC from ground truth metadata
+	referenceMARC := marcgen.GenerateMARCFromMetadata(record)
+	result.ReferenceMARC = referenceMARC
+
+	slog.Debug("Generated reference MARC", "barcode", record.BarcodeSource, "marc", referenceMARC)
+
 	// Get title page OCR text
 	titlePageText := record.GetTitlePageText()
 	if titlePageText == "" {
@@ -109,7 +122,7 @@ func evaluateRecord(record dataset.InstitutionalBooksRecord, service *cataloging
 		return result
 	}
 
-	// Generate MARC record from OCR
+	// Generate MARC record from OCR using LLM
 	generatedMARC, err := service.GenerateMARCFromOCR(titlePageText, provider, model)
 	if err != nil {
 		result.Error = fmt.Sprintf("MARC generation failed: %v", err)
@@ -120,7 +133,13 @@ func evaluateRecord(record dataset.InstitutionalBooksRecord, service *cataloging
 	result.GeneratedMARC = generatedMARC
 	result.ProcessingTime = time.Since(startTime)
 
-	// Compare against ground truth
+	slog.Debug("Generated MARC from LLM", "barcode", record.BarcodeSource, "marc", generatedMARC)
+
+	// Perform MARC-to-MARC comparison (field-by-field with Levenshtein distance)
+	fullComparison := metrics.CompareMARCRecords(referenceMARC, generatedMARC)
+	result.FullComparison = fullComparison
+
+	// Also keep the legacy comparison for backwards compatibility
 	comparison := metrics.CompareMARCFields(
 		generatedMARC,
 		record.TitleSource,
@@ -129,8 +148,14 @@ func evaluateRecord(record dataset.InstitutionalBooksRecord, service *cataloging
 		record.GetISBN(),
 		record.TopicOrSubjectSource,
 	)
-
 	result.Comparison = comparison
+
+	slog.Info("Comparison complete",
+		"barcode", record.BarcodeSource,
+		"overall_score", fullComparison.OverallScore,
+		"levenshtein_total", fullComparison.LevenshteinTotal,
+		"fields_matched", fullComparison.FieldsMatched,
+		"fields_missing", fullComparison.FieldsMissing)
 
 	return result
 }

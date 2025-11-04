@@ -14,7 +14,9 @@ type EvaluationResult struct {
 	Title          string
 	Author         string
 	GeneratedMARC  string
+	ReferenceMARC  string // Ground truth MARC record
 	Comparison     *MARCComparison
+	FullComparison *FullMARCComparison // MARC-to-MARC comparison
 	ProcessingTime time.Duration
 	Error          string // If generation failed
 }
