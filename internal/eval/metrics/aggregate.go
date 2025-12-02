@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/lehigh-university-libraries/cataloger/internal/eval/metadata"
 )
 
 // FieldMatch represents comparison for a single field
@@ -17,26 +19,13 @@ type FieldMatch struct {
 	Notes    string
 }
 
-// FullMARCComparison represents comprehensive field-by-field comparison
-type FullMARCComparison struct {
-	Fields           map[string]FieldMatch
-	OverallScore     float64
-	FieldsMatched    int
-	FieldsMissing    int
-	FieldsIncorrect  int
-	LevenshteinTotal int
-	ReferenceMARC    string // Reference description
-	GeneratedMARC    string // Generated metadata JSON
-}
-
 // EvaluationResult represents the results for a single book evaluation
 type EvaluationResult struct {
 	Barcode           string
 	Title             string
 	Author            string
-	GeneratedMetadata string              // JSON metadata extracted from OCR
-	ReferenceMARC     string              // Ground truth reference (for compatibility)
-	FullComparison    *FullMARCComparison // Field-by-field comparison
+	GeneratedMetadata string // JSON metadata extracted from OCR
+	FullComparison    *metadata.MetadataComparison
 	ProcessingTime    time.Duration
 	Error             string // If generation failed
 }
@@ -156,10 +145,10 @@ func AggregateEvaluationResults(results []EvaluationResult, provider, model stri
 }
 
 // aggregateFieldStats updates field statistics
-func aggregateFieldStats(stats *FieldStats, match FieldMatch) {
+func aggregateFieldStats(stats *FieldStats, match metadata.FieldComparison) {
 	stats.Scores = append(stats.Scores, match.Score)
 
-	switch match.Method {
+	switch match.Match {
 	case "exact":
 		stats.ExactMatches++
 	case "fuzzy_high", "fuzzy_medium", "substring":
@@ -282,7 +271,7 @@ func (a *AggregateResults) SaveDetailedReport(filepath string) error {
 				fmt.Fprintf(file, "  %-10s: %.2f (%s) - Expected: %s, Actual: %s\n",
 					fieldName,
 					match.Score,
-					match.Method,
+					match.Match,
 					truncate(match.Expected, 50),
 					truncate(match.Actual, 50))
 			}

@@ -27,7 +27,6 @@ type EvalResult struct {
 	Title            string             `yaml:"title"`
 	Author           string             `yaml:"author,omitempty"`
 	ProviderResponse string             `yaml:"providerresponse"`
-	ReferenceMARC    string             `yaml:"referencemarc"`
 	OverallScore     float64            `yaml:"overallscore"`
 	LevenshteinTotal int                `yaml:"levenshteintotal"`
 	FieldsMatched    int                `yaml:"fieldsmatched"`
@@ -57,7 +56,7 @@ func SaveToYAML(provider, model, datasetPath string, sampleSize int, results []m
 		Config: EvalConfig{
 			Provider:    provider,
 			Model:       model,
-			Prompt:      "Generate MARC record from title page OCR text",
+			Prompt:      "Extract metadata from OCR text",
 			Temperature: 0.1,
 			DatasetPath: datasetPath,
 			SampleSize:  sampleSize,
@@ -77,7 +76,6 @@ func SaveToYAML(provider, model, datasetPath string, sampleSize int, results []m
 			Title:            r.Title,
 			Author:           r.Author,
 			ProviderResponse: r.GeneratedMetadata,
-			ReferenceMARC:    r.ReferenceMARC,
 		}
 
 		// Add full comparison metrics if available
