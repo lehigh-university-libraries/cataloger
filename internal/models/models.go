@@ -4,12 +4,11 @@ import "time"
 
 // CatalogSession represents a book cataloging session
 type CatalogSession struct {
-	ID         string      `json:"id"`
-	Images     []ImageItem `json:"images"`
-	MARCRecord string      `json:"marc_record,omitempty"`
-	Provider   string      `json:"provider,omitempty"`
-	Model      string      `json:"model,omitempty"`
-	CreatedAt  time.Time   `json:"created_at"`
+	ID        string      `json:"id"`
+	Images    []ImageItem `json:"images"`
+	Provider  string      `json:"provider,omitempty"`
+	Model     string      `json:"model,omitempty"`
+	CreatedAt time.Time   `json:"created_at"`
 }
 
 // ImageItem represents an uploaded book image

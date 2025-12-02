@@ -6,17 +6,28 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/lehigh-university-libraries/cataloger/internal/eval/metadata"
 )
+
+// FieldMatch represents comparison for a single field
+type FieldMatch struct {
+	Expected string
+	Actual   string
+	Score    float64 // 0.0 to 1.0
+	Method   string  // "exact", "fuzzy_high", etc.
+	Notes    string
+}
 
 // EvaluationResult represents the results for a single book evaluation
 type EvaluationResult struct {
-	Barcode        string
-	Title          string
-	Author         string
-	GeneratedMARC  string
-	Comparison     *MARCComparison
-	ProcessingTime time.Duration
-	Error          string // If generation failed
+	Barcode           string
+	Title             string
+	Author            string
+	GeneratedMetadata string // JSON metadata extracted from OCR
+	FullComparison    *metadata.MetadataComparison
+	ProcessingTime    time.Duration
+	Error             string // If generation failed
 }
 
 // AggregateResults represents aggregated evaluation metrics
@@ -92,27 +103,29 @@ func AggregateEvaluationResults(results []EvaluationResult, provider, model stri
 		agg.SuccessCount++
 		successDuration += result.ProcessingTime
 
-		if result.Comparison == nil {
+		if result.FullComparison == nil {
 			continue
 		}
 
-		// Aggregate title stats
-		aggregateFieldStats(&agg.TitleAccuracy, result.Comparison.TitleMatch)
-
-		// Aggregate author stats
-		aggregateFieldStats(&agg.AuthorAccuracy, result.Comparison.AuthorMatch)
-
-		// Aggregate date stats
-		aggregateFieldStats(&agg.DateAccuracy, result.Comparison.DateMatch)
-
-		// Aggregate ISBN stats
-		aggregateFieldStats(&agg.ISBNAccuracy, result.Comparison.ISBNMatch)
-
-		// Aggregate subject stats
-		aggregateFieldStats(&agg.SubjectAccuracy, result.Comparison.SubjectMatch)
+		// Aggregate field stats from the comparison map
+		if titleMatch, ok := result.FullComparison.Fields["title"]; ok {
+			aggregateFieldStats(&agg.TitleAccuracy, titleMatch)
+		}
+		if authorMatch, ok := result.FullComparison.Fields["author"]; ok {
+			aggregateFieldStats(&agg.AuthorAccuracy, authorMatch)
+		}
+		if dateMatch, ok := result.FullComparison.Fields["date"]; ok {
+			aggregateFieldStats(&agg.DateAccuracy, dateMatch)
+		}
+		if isbnMatch, ok := result.FullComparison.Fields["isbn"]; ok {
+			aggregateFieldStats(&agg.ISBNAccuracy, isbnMatch)
+		}
+		if subjectMatch, ok := result.FullComparison.Fields["subject"]; ok {
+			aggregateFieldStats(&agg.SubjectAccuracy, subjectMatch)
+		}
 
 		// Overall score
-		totalOverallScore += result.Comparison.OverallScore
+		totalOverallScore += result.FullComparison.OverallScore
 	}
 
 	// Calculate averages
@@ -132,10 +145,10 @@ func AggregateEvaluationResults(results []EvaluationResult, provider, model stri
 }
 
 // aggregateFieldStats updates field statistics
-func aggregateFieldStats(stats *FieldStats, match FieldMatch) {
+func aggregateFieldStats(stats *FieldStats, match metadata.FieldComparison) {
 	stats.Scores = append(stats.Scores, match.Score)
 
-	switch match.Method {
+	switch match.Match {
 	case "exact":
 		stats.ExactMatches++
 	case "fuzzy_high", "fuzzy_medium", "substring":
@@ -250,37 +263,36 @@ func (a *AggregateResults) SaveDetailedReport(filepath string) error {
 
 		if result.Error != "" {
 			fmt.Fprintf(file, "ERROR: %s\n", result.Error)
-		} else if result.Comparison != nil {
-			fmt.Fprintf(file, "\nField Comparisons:\n")
-			fmt.Fprintf(file, "  Title:   %.2f (%s) - Expected: %s, Actual: %s\n",
-				result.Comparison.TitleMatch.Score,
-				result.Comparison.TitleMatch.Method,
-				result.Comparison.TitleMatch.Expected,
-				result.Comparison.TitleMatch.Actual)
+		} else if result.FullComparison != nil {
+			fmt.Fprintf(file, "\nField Comparisons (Levenshtein distance: %d):\n", result.FullComparison.LevenshteinTotal)
 
-			fmt.Fprintf(file, "  Author:  %.2f (%s) - Expected: %s, Actual: %s\n",
-				result.Comparison.AuthorMatch.Score,
-				result.Comparison.AuthorMatch.Method,
-				result.Comparison.AuthorMatch.Expected,
-				result.Comparison.AuthorMatch.Actual)
+			// Print each field comparison
+			for fieldName, match := range result.FullComparison.Fields {
+				fmt.Fprintf(file, "  %-10s: %.2f (%s) - Expected: %s, Actual: %s\n",
+					fieldName,
+					match.Score,
+					match.Match,
+					truncate(match.Expected, 50),
+					truncate(match.Actual, 50))
+			}
 
-			fmt.Fprintf(file, "  Date:    %.2f (%s) - Expected: %s, Actual: %s\n",
-				result.Comparison.DateMatch.Score,
-				result.Comparison.DateMatch.Method,
-				result.Comparison.DateMatch.Expected,
-				result.Comparison.DateMatch.Actual)
-
-			fmt.Fprintf(file, "  ISBN:    %.2f (%s) - Expected: %s, Actual: %s\n",
-				result.Comparison.ISBNMatch.Score,
-				result.Comparison.ISBNMatch.Method,
-				result.Comparison.ISBNMatch.Expected,
-				result.Comparison.ISBNMatch.Actual)
-
-			fmt.Fprintf(file, "\nOverall Score: %.2f%%\n", result.Comparison.OverallScore*100)
+			fmt.Fprintf(file, "\nSummary: %d matched, %d missing, %d incorrect\n",
+				result.FullComparison.FieldsMatched,
+				result.FullComparison.FieldsMissing,
+				result.FullComparison.FieldsIncorrect)
+			fmt.Fprintf(file, "Overall Score: %.2f%%\n", result.FullComparison.OverallScore*100)
 		}
 
 		fmt.Fprintf(file, "\n%s\n\n", separator)
 	}
 
 	return nil
+}
+
+// truncate shortens a string to the given length with ellipsis
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
