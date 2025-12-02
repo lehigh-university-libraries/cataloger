@@ -29,11 +29,11 @@ type MetadataComparison struct {
 
 // FieldComparison represents comparison for a single metadata field
 type FieldComparison struct {
-	FieldName  string
-	Expected   string
-	Actual     string
-	Score      float64 // 0.0 to 1.0
-	Distance   int     // Levenshtein distance
-	Match      string  // "exact", "fuzzy_high", "fuzzy_medium", "no_match", "missing"
-	Notes      string
+	FieldName string
+	Expected  string
+	Actual    string
+	Score     float64 // 0.0 to 1.0
+	Distance  int     // Levenshtein distance
+	Match     string  // "exact", "fuzzy_high", "fuzzy_medium", "no_match", "missing"
+	Notes     string
 }

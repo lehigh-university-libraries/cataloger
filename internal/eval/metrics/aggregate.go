@@ -34,8 +34,8 @@ type EvaluationResult struct {
 	Barcode           string
 	Title             string
 	Author            string
-	GeneratedMetadata string // JSON metadata extracted from OCR
-	ReferenceMARC     string // Ground truth reference (for compatibility)
+	GeneratedMetadata string              // JSON metadata extracted from OCR
+	ReferenceMARC     string              // Ground truth reference (for compatibility)
 	FullComparison    *FullMARCComparison // Field-by-field comparison
 	ProcessingTime    time.Duration
 	Error             string // If generation failed
@@ -280,7 +280,7 @@ func (a *AggregateResults) SaveDetailedReport(filepath string) error {
 			// Print each field comparison
 			for fieldName, match := range result.FullComparison.Fields {
 				fmt.Fprintf(file, "  %-10s: %.2f (%s) - Expected: %s, Actual: %s\n",
-					strings.Title(fieldName),
+					fieldName,
 					match.Score,
 					match.Method,
 					truncate(match.Expected, 50),

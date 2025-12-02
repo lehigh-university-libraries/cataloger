@@ -12,13 +12,13 @@ import (
 
 // EvalConfig represents the configuration section of the eval YAML
 type EvalConfig struct {
-	Provider    string   `yaml:"provider"`
-	Model       string   `yaml:"model"`
-	Prompt      string   `yaml:"prompt"`
-	Temperature float64  `yaml:"temperature"`
-	DatasetPath string   `yaml:"datasetpath"`
-	SampleSize  int      `yaml:"samplesize"`
-	Timestamp   string   `yaml:"timestamp"`
+	Provider    string  `yaml:"provider"`
+	Model       string  `yaml:"model"`
+	Prompt      string  `yaml:"prompt"`
+	Temperature float64 `yaml:"temperature"`
+	DatasetPath string  `yaml:"datasetpath"`
+	SampleSize  int     `yaml:"samplesize"`
+	Timestamp   string  `yaml:"timestamp"`
 }
 
 // EvalResult represents a single evaluation result

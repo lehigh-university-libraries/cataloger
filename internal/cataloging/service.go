@@ -516,8 +516,8 @@ func (s *Service) extractMetadataWithOpenAI(ocrText, model string) (string, erro
 				"content": userPrompt,
 			},
 		},
-		"max_tokens":    1000,
-		"temperature":   0.1,
+		"max_tokens":      1000,
+		"temperature":     0.1,
 		"response_format": map[string]string{"type": "json_object"}, // Request JSON format
 	}
 

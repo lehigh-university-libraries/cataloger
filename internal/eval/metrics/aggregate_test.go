@@ -10,41 +10,43 @@ import (
 func TestAggregateEvaluationResults(t *testing.T) {
 	results := []EvaluationResult{
 		{
-			Barcode:        "123",
-			Title:          "Test Book 1",
-			Author:         "Test Author 1",
-			GeneratedMARC:  "MARC data 1",
-			ProcessingTime: 5 * time.Second,
-			Comparison: &MARCComparison{
-				TitleMatch:   FieldMatch{Score: 0.9, Method: "exact"},
-				AuthorMatch:  FieldMatch{Score: 0.8, Method: "fuzzy_high"},
-				DateMatch:    FieldMatch{Score: 1.0, Method: "exact"},
-				ISBNMatch:    FieldMatch{Score: 0.7, Method: "fuzzy_medium"},
-				SubjectMatch: FieldMatch{Score: 0.6, Method: "substring"},
-				FieldLevelScores: map[string]float64{
-					"Title":  0.9,
-					"Author": 0.8,
+			Barcode:           "123",
+			Title:             "Test Book 1",
+			Author:            "Test Author 1",
+			GeneratedMetadata: `{"title":"Test Book 1","author":"Test Author 1"}`,
+			ProcessingTime:    5 * time.Second,
+			FullComparison: &FullMARCComparison{
+				Fields: map[string]FieldMatch{
+					"title":   {Score: 0.9, Method: "exact"},
+					"author":  {Score: 0.8, Method: "fuzzy_high"},
+					"date":    {Score: 1.0, Method: "exact"},
+					"isbn":    {Score: 0.7, Method: "fuzzy_medium"},
+					"subject": {Score: 0.6, Method: "substring"},
 				},
-				OverallScore: 0.82,
+				OverallScore:    0.82,
+				FieldsMatched:   3,
+				FieldsMissing:   1,
+				FieldsIncorrect: 1,
 			},
 		},
 		{
-			Barcode:        "456",
-			Title:          "Test Book 2",
-			Author:         "Test Author 2",
-			GeneratedMARC:  "MARC data 2",
-			ProcessingTime: 3 * time.Second,
-			Comparison: &MARCComparison{
-				TitleMatch:   FieldMatch{Score: 1.0, Method: "exact"},
-				AuthorMatch:  FieldMatch{Score: 0.9, Method: "exact"},
-				DateMatch:    FieldMatch{Score: 0.8, Method: "fuzzy_high"},
-				ISBNMatch:    FieldMatch{Score: 0.0, Method: "no_match"},
-				SubjectMatch: FieldMatch{Score: 0.5, Method: "both_missing"},
-				FieldLevelScores: map[string]float64{
-					"Title":  1.0,
-					"Author": 0.9,
+			Barcode:           "456",
+			Title:             "Test Book 2",
+			Author:            "Test Author 2",
+			GeneratedMetadata: `{"title":"Test Book 2","author":"Test Author 2"}`,
+			ProcessingTime:    3 * time.Second,
+			FullComparison: &FullMARCComparison{
+				Fields: map[string]FieldMatch{
+					"title":   {Score: 1.0, Method: "exact"},
+					"author":  {Score: 0.9, Method: "exact"},
+					"date":    {Score: 0.8, Method: "fuzzy_high"},
+					"isbn":    {Score: 0.0, Method: "no_match"},
+					"subject": {Score: 0.5, Method: "both_missing"},
 				},
-				OverallScore: 0.75,
+				OverallScore:    0.75,
+				FieldsMatched:   2,
+				FieldsMissing:   2,
+				FieldsIncorrect: 1,
 			},
 		},
 		{
@@ -211,10 +213,13 @@ func TestSaveToJSON(t *testing.T) {
 			Barcode:        "123",
 			Title:          "Test Book",
 			ProcessingTime: 5 * time.Second,
-			Comparison: &MARCComparison{
-				TitleMatch:   FieldMatch{Score: 0.9, Method: "exact"},
-				AuthorMatch:  FieldMatch{Score: 0.8, Method: "fuzzy_high"},
-				OverallScore: 0.85,
+			FullComparison: &FullMARCComparison{
+				Fields: map[string]FieldMatch{
+					"title":  {Score: 0.9, Method: "exact"},
+					"author": {Score: 0.8, Method: "fuzzy_high"},
+				},
+				OverallScore:  0.85,
+				FieldsMatched: 2,
 			},
 		},
 	}
@@ -252,32 +257,35 @@ func TestSaveDetailedReport(t *testing.T) {
 			Title:          "Test Book",
 			Author:         "Test Author",
 			ProcessingTime: 5 * time.Second,
-			Comparison: &MARCComparison{
-				TitleMatch: FieldMatch{
-					Expected: "Test Book",
-					Actual:   "Test Book",
-					Score:    1.0,
-					Method:   "exact",
+			FullComparison: &FullMARCComparison{
+				Fields: map[string]FieldMatch{
+					"title": {
+						Expected: "Test Book",
+						Actual:   "Test Book",
+						Score:    1.0,
+						Method:   "exact",
+					},
+					"author": {
+						Expected: "Test Author",
+						Actual:   "Test Author",
+						Score:    1.0,
+						Method:   "exact",
+					},
+					"date": {
+						Expected: "2020",
+						Actual:   "2020",
+						Score:    1.0,
+						Method:   "exact",
+					},
+					"isbn": {
+						Expected: "",
+						Actual:   "",
+						Score:    0.5,
+						Method:   "both_missing",
+					},
 				},
-				AuthorMatch: FieldMatch{
-					Expected: "Test Author",
-					Actual:   "Test Author",
-					Score:    1.0,
-					Method:   "exact",
-				},
-				DateMatch: FieldMatch{
-					Expected: "2020",
-					Actual:   "2020",
-					Score:    1.0,
-					Method:   "exact",
-				},
-				ISBNMatch: FieldMatch{
-					Expected: "",
-					Actual:   "",
-					Score:    0.5,
-					Method:   "both_missing",
-				},
-				OverallScore: 0.95,
+				OverallScore:  0.95,
+				FieldsMatched: 3,
 			},
 		},
 		{
