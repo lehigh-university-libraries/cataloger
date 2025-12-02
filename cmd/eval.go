@@ -9,7 +9,7 @@ func newEvalCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "eval",
 		Short: "Metadata extraction evaluation tools",
-		Long: `Evaluation tools for measuring the accuracy of LLM-generated metadata.`,
+		Long:  `Evaluation tools for measuring the accuracy of LLM-generated metadata.`,
 	}
 
 	// Add eval subcommands

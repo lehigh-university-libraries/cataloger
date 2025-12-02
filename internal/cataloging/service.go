@@ -32,7 +32,6 @@ func (s *Service) initProvider(providerType string) (providers.Provider, error) 
 	}
 }
 
-
 // ExtractMetadataFromOCR extracts bibliographic metadata from OCR text
 func (s *Service) ExtractMetadataFromOCR(ocrText, provider, model string) (string, error) {
 	// Set defaults if not provided
@@ -93,17 +92,13 @@ func (s *Service) GetDefaultModel(provider string) string {
 	case "gemini":
 		model := os.Getenv("GEMINI_MODEL")
 		if model == "" {
-			return "gemini-pro"
+			return "gemini-1.5-flash-latest"
 		}
 		return model
 	default:
 		return ""
 	}
 }
-
-
-
-
 
 // buildMetadataExtractionPrompt creates a prompt for extracting bibliographic metadata
 func (s *Service) buildMetadataExtractionPrompt() string {

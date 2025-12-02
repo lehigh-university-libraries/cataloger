@@ -3,8 +3,11 @@ package metrics
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/lehigh-university-libraries/cataloger/internal/eval/metadata"
 )
 
 func TestAggregateEvaluationResults(t *testing.T) {
@@ -15,13 +18,13 @@ func TestAggregateEvaluationResults(t *testing.T) {
 			Author:            "Test Author 1",
 			GeneratedMetadata: `{"title":"Test Book 1","author":"Test Author 1"}`,
 			ProcessingTime:    5 * time.Second,
-			FullComparison: &FullMARCComparison{
-				Fields: map[string]FieldMatch{
-					"title":   {Score: 0.9, Method: "exact"},
-					"author":  {Score: 0.8, Method: "fuzzy_high"},
-					"date":    {Score: 1.0, Method: "exact"},
-					"isbn":    {Score: 0.7, Method: "fuzzy_medium"},
-					"subject": {Score: 0.6, Method: "substring"},
+			FullComparison: &metadata.MetadataComparison{
+				Fields: map[string]metadata.FieldComparison{
+					"title":   {Score: 0.9, Match: "exact"},
+					"author":  {Score: 0.8, Match: "fuzzy_high"},
+					"date":    {Score: 1.0, Match: "exact"},
+					"isbn":    {Score: 0.7, Match: "fuzzy_medium"},
+					"subject": {Score: 0.6, Match: "substring"},
 				},
 				OverallScore:    0.82,
 				FieldsMatched:   3,
@@ -35,13 +38,13 @@ func TestAggregateEvaluationResults(t *testing.T) {
 			Author:            "Test Author 2",
 			GeneratedMetadata: `{"title":"Test Book 2","author":"Test Author 2"}`,
 			ProcessingTime:    3 * time.Second,
-			FullComparison: &FullMARCComparison{
-				Fields: map[string]FieldMatch{
-					"title":   {Score: 1.0, Method: "exact"},
-					"author":  {Score: 0.9, Method: "exact"},
-					"date":    {Score: 0.8, Method: "fuzzy_high"},
-					"isbn":    {Score: 0.0, Method: "no_match"},
-					"subject": {Score: 0.5, Method: "both_missing"},
+			FullComparison: &metadata.MetadataComparison{
+				Fields: map[string]metadata.FieldComparison{
+					"title":   {Score: 1.0, Match: "exact"},
+					"author":  {Score: 0.9, Match: "exact"},
+					"date":    {Score: 0.8, Match: "fuzzy_high"},
+					"isbn":    {Score: 0.0, Match: "no_match"},
+					"subject": {Score: 0.5, Match: "both_missing"},
 				},
 				OverallScore:    0.75,
 				FieldsMatched:   2,
@@ -53,7 +56,7 @@ func TestAggregateEvaluationResults(t *testing.T) {
 			Barcode:        "789",
 			Title:          "Test Book 3",
 			Author:         "Test Author 3",
-			Error:          "Failed to generate MARC",
+			Error:          "Failed to generate metadata",
 			ProcessingTime: 1 * time.Second,
 		},
 	}
@@ -177,7 +180,7 @@ func TestAggregateFieldStats(t *testing.T) {
 	}
 
 	// Test exact match
-	aggregateFieldStats(&stats, FieldMatch{Score: 1.0, Method: "exact"})
+	aggregateFieldStats(&stats, metadata.FieldComparison{Score: 1.0, Match: "exact"})
 	if stats.ExactMatches != 1 {
 		t.Errorf("Expected ExactMatches=1, got %d", stats.ExactMatches)
 	}
@@ -186,19 +189,19 @@ func TestAggregateFieldStats(t *testing.T) {
 	}
 
 	// Test fuzzy match
-	aggregateFieldStats(&stats, FieldMatch{Score: 0.8, Method: "fuzzy_high"})
+	aggregateFieldStats(&stats, metadata.FieldComparison{Score: 0.8, Match: "fuzzy_high"})
 	if stats.FuzzyMatches != 1 {
 		t.Errorf("Expected FuzzyMatches=1, got %d", stats.FuzzyMatches)
 	}
 
 	// Test no match
-	aggregateFieldStats(&stats, FieldMatch{Score: 0.0, Method: "no_match"})
+	aggregateFieldStats(&stats, metadata.FieldComparison{Score: 0.0, Match: "no_match"})
 	if stats.NoMatches != 1 {
 		t.Errorf("Expected NoMatches=1, got %d", stats.NoMatches)
 	}
 
 	// Test missing field
-	aggregateFieldStats(&stats, FieldMatch{Score: 0.5, Method: "both_missing"})
+	aggregateFieldStats(&stats, metadata.FieldComparison{Score: 0.5, Match: "both_missing"})
 	if stats.MissingFields != 1 {
 		t.Errorf("Expected MissingFields=1, got %d", stats.MissingFields)
 	}
@@ -213,10 +216,10 @@ func TestSaveToJSON(t *testing.T) {
 			Barcode:        "123",
 			Title:          "Test Book",
 			ProcessingTime: 5 * time.Second,
-			FullComparison: &FullMARCComparison{
-				Fields: map[string]FieldMatch{
-					"title":  {Score: 0.9, Method: "exact"},
-					"author": {Score: 0.8, Method: "fuzzy_high"},
+			FullComparison: &metadata.MetadataComparison{
+				Fields: map[string]metadata.FieldComparison{
+					"title":  {Score: 0.9, Match: "exact"},
+					"author": {Score: 0.8, Match: "fuzzy_high"},
 				},
 				OverallScore:  0.85,
 				FieldsMatched: 2,
@@ -257,31 +260,31 @@ func TestSaveDetailedReport(t *testing.T) {
 			Title:          "Test Book",
 			Author:         "Test Author",
 			ProcessingTime: 5 * time.Second,
-			FullComparison: &FullMARCComparison{
-				Fields: map[string]FieldMatch{
+			FullComparison: &metadata.MetadataComparison{
+				Fields: map[string]metadata.FieldComparison{
 					"title": {
 						Expected: "Test Book",
 						Actual:   "Test Book",
 						Score:    1.0,
-						Method:   "exact",
+						Match:    "exact",
 					},
 					"author": {
 						Expected: "Test Author",
 						Actual:   "Test Author",
 						Score:    1.0,
-						Method:   "exact",
+						Match:    "exact",
 					},
 					"date": {
 						Expected: "2020",
 						Actual:   "2020",
 						Score:    1.0,
-						Method:   "exact",
+						Match:    "exact",
 					},
 					"isbn": {
 						Expected: "",
 						Actual:   "",
 						Score:    0.5,
-						Method:   "both_missing",
+						Match:    "both_missing",
 					},
 				},
 				OverallScore:  0.95,
@@ -292,7 +295,7 @@ func TestSaveDetailedReport(t *testing.T) {
 			Barcode: "456",
 			Title:   "Failed Book",
 			Author:  "Failed Author",
-			Error:   "MARC generation failed",
+			Error:   "Metadata extraction failed",
 		},
 	}
 
@@ -322,26 +325,21 @@ func TestSaveDetailedReport(t *testing.T) {
 	}
 
 	// Check for header
-	if !contains(contentStr, "CATALOGER EVALUATION DETAILED REPORT") {
+	if !strings.Contains(contentStr, "CATALOGER EVALUATION DETAILED REPORT") {
 		t.Error("Report missing header")
 	}
 
 	// Check for record information
-	if !contains(contentStr, "RECORD 1: 123") {
+	if !strings.Contains(contentStr, "RECORD 1: 123") {
 		t.Error("Report missing first record")
 	}
 
-	if !contains(contentStr, "Test Book") {
+	if !strings.Contains(contentStr, "Test Book") {
 		t.Error("Report missing title")
 	}
 
 	// Check for error
-	if !contains(contentStr, "ERROR: MARC generation failed") {
+	if !strings.Contains(contentStr, "ERROR: Metadata extraction failed") {
 		t.Error("Report missing error message")
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > 0 && (s[0:len(substr)] == substr || contains(s[1:], substr))))
 }

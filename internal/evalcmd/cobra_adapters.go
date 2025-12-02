@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-
 // NewIBCmd creates the ib command for evaluating with Institutional Books dataset
 func NewIBCmd() *cobra.Command {
 	var datasetPath string

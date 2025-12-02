@@ -178,4 +178,3 @@ func cleanJSON(s string) string {
 	s = strings.TrimSpace(s)
 	return s
 }
-
